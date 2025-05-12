@@ -268,8 +268,13 @@ func (ci CellID) VertexNeighbors(level int) []CellID {
 // same neighbor may be returned more than once. There could be up to eight
 // neighbors including the diagonal ones that share the vertex.
 //
-// This requires level >= ci.Level().
+// Returns nil if level < ci.Level() (cells would not be neighboring) or
+// level > MaxLevel (no such cells exist).
 func (ci CellID) AllNeighbors(level int) []CellID {
+	if level < ci.Level() || level > MaxLevel {
+		return nil
+	}
+
 	var neighbors []CellID
 
 	face, i, j, _ := ci.faceIJOrientation()
@@ -356,7 +361,7 @@ func CellIDFromString(s string) CellID {
 	}
 	id := CellIDFromFace(face)
 	for i := 2; i < len(s); i++ {
-		var childPos byte = s[i] - '0'
+		var childPos = s[i] - '0'
 		// Bytes are non-negative.
 		if childPos > 3 {
 			return CellID(0)
