@@ -104,3 +104,16 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	return nil
 }
+
+// =============================================================================
+
+var weatherPrompt = `
+You are a weather expert. When I ask you about the weather in a given location,
+I want you to only reply with "get_weather(<location_name>)". After you reply,
+you will wait for me to give you the actual weather information and then you
+will provide a proper response to the question for the weather in that given
+location. Only provide the weather details for the location and nothing else.
+Understood?`
+
+// What is the weather in Munich Germany
+// hot and humid, 28 degrees celcius
