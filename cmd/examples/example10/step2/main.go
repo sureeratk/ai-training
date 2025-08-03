@@ -19,11 +19,11 @@ func main() {
 }
 
 func run() error {
-	// if err := nonWeatherQuestion(); err != nil {
-	// 	return fmt.Errorf("nonWeatherQuestion: %w", err)
-	// }
+	if err := nonWeatherQuestion(); err != nil {
+		return fmt.Errorf("nonWeatherQuestion: %w", err)
+	}
 
-	// fmt.Println("\n===================================================")
+	fmt.Println("\n===================================================")
 
 	if err := weatherQuestion(); err != nil {
 		return fmt.Errorf("weatherQuestion: %w", err)
