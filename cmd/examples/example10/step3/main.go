@@ -1,7 +1,6 @@
 // https://ampcode.com/how-to-build-an-agent
 //
-// This example shows you how to create a terminal based chat client.
-// using the Ollama service and qwen3 model.
+// This example shows you how add tool calling to the chat agent from step 1.
 //
 // # Running the example:
 //
