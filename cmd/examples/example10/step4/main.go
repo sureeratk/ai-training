@@ -1,6 +1,7 @@
 // https://ampcode.com/how-to-build-an-agent
 //
-// This example shows you how add tool calling to the chat agent from step 1.
+// This example shows you a final example of the coding agent with support
+// to read, list, and edit files.
 //
 // # Running the example:
 //
@@ -97,6 +98,11 @@ func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (s
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 	var inToolCall bool
+
+	conversation = append(conversation, client.D{
+		"role":    "system",
+		"content": "You are a helpful coding assistant that has tools to access the file system.",
+	})
 
 	fmt.Println("Chat with qwen3 (use 'ctrl-c' to quit)")
 
@@ -195,7 +201,7 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (cli
 
 				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
 				if err != nil {
-					return client.D{}, fmt.Errorf("\n\nERROR: %w", err)
+					return client.D{}, fmt.Errorf("ERROR: %w", err)
 				}
 				return resp, nil
 			}
@@ -381,8 +387,8 @@ func (ef EditFile) ToolDocument() client.D {
 
 func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
 	path := arguments["path"]
-	oldStr := arguments["old_str"]
-	newStr := arguments["new_str"]
+	oldStr := strings.TrimSpace(arguments["old_str"])
+	newStr := strings.TrimSpace(arguments["new_str"])
 
 	if path == "" || oldStr == newStr {
 		return client.D{}, fmt.Errorf("invalid input parameters")
@@ -398,7 +404,18 @@ func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (clien
 
 	if oldStr != "" {
 		oldContent := string(content)
+
+		if !strings.Contains(oldContent, oldStr) {
+			return client.D{}, fmt.Errorf("%s not found in file", oldStr)
+		}
+
 		newContent := strings.ReplaceAll(oldContent, oldStr, newStr)
+
+		fmt.Println("\n=======================================")
+		fmt.Println(oldContent)
+		fmt.Println("=======================================")
+		fmt.Println(newContent)
+		fmt.Print("=======================================\n\n")
 
 		if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
 			return client.D{}, fmt.Errorf("writing file: %w", err)
@@ -413,8 +430,6 @@ func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (clien
 func (ef EditFile) createNewFile(filePath string, content string) (client.D, error) {
 	dir := path.Dir(filePath)
 	if dir != "." {
-		fmt.Println("FP: ", filePath)
-		fmt.Println("DIR: ", dir)
 		err := os.MkdirAll(dir, 0755)
 		if err != nil {
 			return client.D{}, fmt.Errorf("creating directory: %w", err)

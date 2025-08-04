@@ -201,7 +201,7 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (cli
 
 				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
 				if err != nil {
-					return client.D{}, fmt.Errorf("\n\nERROR: %w", err)
+					return client.D{}, fmt.Errorf("ERROR: %w", err)
 				}
 				return resp, nil
 			}
