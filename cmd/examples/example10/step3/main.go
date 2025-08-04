@@ -126,8 +126,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 
 			if !thinking {
-				// ADD SUPPORT FOR TOOL CALLING.
-				if len(resp.Message.ToolCalls) > 0 {
+				switch {
+				case len(resp.Message.ToolCalls) > 0:
+					// ADD SUPPORT FOR TOOL CALLING.
 					result, err := callTools(ctx, resp.Message.ToolCalls)
 					if err != nil {
 						return fmt.Errorf("call tools: %w", err)
@@ -136,11 +137,9 @@ func (a *Agent) Run(ctx context.Context) error {
 					if len(result) > 0 {
 						conversation = append(conversation, result)
 						inToolCall = true
-						continue
 					}
-				}
 
-				if resp.Message.Content != "" {
+				case resp.Message.Content != "":
 					fmt.Print(resp.Message.Content)
 					chunks = append(chunks, resp.Message.Content)
 				}
