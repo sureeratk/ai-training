@@ -51,10 +51,7 @@ func run() error {
 
 	cln := client.NewSSE[client.Chat](logger)
 
-	agent := Agent{
-		client:         cln,
-		getUserMessage: getUserMessage,
-	}
+	agent := NewAgent(cln, getUserMessage)
 
 	return agent.Run(context.TODO())
 }
@@ -64,6 +61,13 @@ func run() error {
 type Agent struct {
 	client         *client.SSEClient[client.Chat]
 	getUserMessage func() (string, bool)
+}
+
+func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
+	return &Agent{
+		client:         sseClient,
+		getUserMessage: getUserMessage,
+	}
 }
 
 func (a *Agent) Run(ctx context.Context) error {

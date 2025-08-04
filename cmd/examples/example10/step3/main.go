@@ -50,19 +50,49 @@ func run() error {
 
 	cln := client.NewSSE[client.Chat](logger)
 
-	agent := Agent{
-		client:         cln,
-		getUserMessage: getUserMessage,
-	}
+	agent := NewAgent(cln, getUserMessage)
 
 	return agent.Run(context.TODO())
 }
 
 // =============================================================================
 
+// DEFINE A TOOL INTERFACE TO DEFINE WHAT A TOOL NEEDS TO PROVIDE.
+
+type Tool interface {
+	Name() string
+	ToolDocument() client.D
+	Call(ctx context.Context, arguments map[string]string) (client.D, error)
+}
+
+// =============================================================================
+
+// WE NEED TO ADD TOOL SUPPORT TO THE AGENT.
+// WE WILL ADD TWO NEW FIELDS AND PRE-CONSTRUCT ALL THE TOOLING.
+
 type Agent struct {
 	client         *client.SSEClient[client.Chat]
 	getUserMessage func() (string, bool)
+	tools          []Tool
+	toolDocuments  []client.D
+}
+
+func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
+	tools := []Tool{
+		NewGetWeather(),
+	}
+
+	toolDocs := make([]client.D, len(tools))
+	for i, tool := range tools {
+		toolDocs[i] = tool.ToolDocument()
+	}
+
+	return &Agent{
+		client:         sseClient,
+		getUserMessage: getUserMessage,
+		tools:          tools,
+		toolDocuments:  toolDocs,
+	}
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -100,9 +130,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			"stream":      true,
 
 			// ADDING TOOL CALLING TO THE REQUEST.
-			"tools": []client.D{
-				GetWeather{}.Tool(),
-			},
+			"tools":          a.toolDocuments,
 			"tool_selection": "auto",
 			"options":        client.D{"num_ctx": 32000},
 		}
@@ -129,7 +157,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				switch {
 				case len(resp.Message.ToolCalls) > 0:
 					// ADD SUPPORT FOR TOOL CALLING.
-					result, err := callTools(ctx, resp.Message.ToolCalls)
+					result, err := a.callTools(ctx, resp.Message.ToolCalls)
 					if err != nil {
 						return fmt.Errorf("call tools: %w", err)
 					}
@@ -159,17 +187,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
-func callTools(ctx context.Context, toolCalls []client.ToolCall) (client.D, error) {
+func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (client.D, error) {
 	for _, toolCall := range toolCalls {
-		if toolCall.Function.Name == "get_current_weather" {
-			var getWeather GetWeather
-
-			resp, err := getWeather.Call(ctx, toolCall.Function.Arguments)
-			if err != nil {
-				return client.D{}, fmt.Errorf("call: %w", err)
+		for _, tool := range a.tools {
+			if toolCall.Function.Name == tool.Name() {
+				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
+				if err != nil {
+					return client.D{}, fmt.Errorf("call: %w", err)
+				}
+				return resp, nil
 			}
-
-			return resp, nil
 		}
 	}
 
@@ -178,13 +205,25 @@ func callTools(ctx context.Context, toolCalls []client.ToolCall) (client.D, erro
 
 // =============================================================================
 
-type GetWeather struct{}
+type GetWeather struct {
+	name string
+}
 
-func (g GetWeather) Tool() client.D {
+func NewGetWeather() GetWeather {
+	return GetWeather{
+		name: "get_current_weather",
+	}
+}
+
+func (gw GetWeather) Name() string {
+	return gw.name
+}
+
+func (gw GetWeather) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
-			"name":        "get_current_weather",
+			"name":        gw.Name(),
 			"description": "Get the current weather for a location",
 			"parameters": client.D{
 				"type": "object",
@@ -200,10 +239,10 @@ func (g GetWeather) Tool() client.D {
 	}
 }
 
-func (g GetWeather) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
+func (gw GetWeather) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
 	return client.D{
 		"role":    "tool",
-		"name":    "get_current_weather",
+		"name":    gw.Name(),
 		"content": "hot and humid, 28 degrees celcius",
 	}, nil
 }
