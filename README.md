@@ -6,11 +6,11 @@ hello@ardanlabs.com
 ## My Information
 
 ```
-Name:    Bill Kennedy  
-Company: Ardan Labs  
-Title:   Managing Partner  
-Email:   bill@ardanlabs.com  
-Twitter: goinggodotnet  
+Name:    Bill Kennedy
+Company: Ardan Labs
+Title:   Managing Partner
+Email:   bill@ardanlabs.com
+Twitter: goinggodotnet
 ```
 
 ## Description
@@ -40,13 +40,13 @@ make docker
 With the software installed, you will want to start your Ollama service. Open a terminal and run the following command. This will show logs so start a terminal window you can see but won't need.
 
 ```
-make dev-ollama-up
+make ollama-up
 ```
 
 Now start the Mongo and Open Web containers in Docker Compose. Open a new terminal window for this.
 
 ```
-make dev-up
+make compose-up
 ```
 
 Now you need to pull down the models you will be using. Open a new terminal window for this. This might take several minutes depending on your bandwidth.
@@ -92,7 +92,8 @@ Our classes are perfect for intermediate-level developers who have at least a fe
 
 ## Our Teacher
 
-### William Kennedy ([@goinggodotnet](https://twitter.com/goinggodotnet))  
+### William Kennedy ([@goinggodotnet](https://twitter.com/goinggodotnet))
+
 _William Kennedy is a managing partner at Ardan Labs in Miami, Florida. Ardan Labs is a high-performance development and training firm working with startups and fortune 500 companies. He is also a co-author of the book Go in Action, the author of the blog GoingGo.Net, and a founding member of GoBridge which is working to increase Go adoption through diversity._
 
 ## More About Go
@@ -107,28 +108,30 @@ Go is the fusion of performance and productivity wrapped in a language that soft
 [The eigenvector of "Why we moved from language X to language Y"](https://erikbern.com/2017/03/15/the-eigenvector-of-why-we-moved-from-language-x-to-language-y.html) - Erik Bernhardsson  
 [Learn More](https://talks.golang.org/2012/splash.article) - Go Team  
 [Simplicity is Complicated](https://www.youtube.com/watch?v=rFejpH_tAHM) - Rob Pike  
-[Getting Started In Go](http://aarti.github.io/2016/08/13/getting-started-in-go) - Aarti Parikh  
+[Getting Started In Go](http://aarti.github.io/2016/08/13/getting-started-in-go) - Aarti Parikh
 
 ## Minimal Qualified Student
 
 The material has been designed to be taught in a classroom environment. The code is well commented but missing some contextual concepts and ideas that will be covered in class. Students with the following minimal background will get the most out of the class.
 
-* Studied CS in school or has a minimum of two years of experience programming full time professionally.
-* Familiar with structural and object oriented programming styles.
-* Has worked with arrays, lists, queues and stacks.
-* Understands processes, threads and synchronization at a high level.
-* Operating Systems
-	* Has worked with a command shell.
-	* Knows how to maneuver around the file system.
-	* Understands what environment variables are.
+- Studied CS in school or has a minimum of two years of experience programming full time professionally.
+- Familiar with structural and object oriented programming styles.
+- Has worked with arrays, lists, queues and stacks.
+- Understands processes, threads and synchronization at a high level.
+- Operating Systems
+  - Has worked with a command shell.
+  - Knows how to maneuver around the file system.
+  - Understands what environment variables are.
 
 ## Joining the Go Slack Community
 
-We use a Slack channel to share links, code, and examples during the training.  This is free.  This is also the same Slack community you will use after training to ask for help and interact with may Go experts around the world in the community.
+We use a Slack channel to share links, code, and examples during the training. This is free. This is also the same Slack community you will use after training to ask for help and interact with may Go experts around the world in the community.
 
 1. Using the following link, fill out your name and email address: https://invite.slack.gobridge.org
 1. Check your email, and follow the link to the slack application.
 1. Join the training channel by clicking on this link: https://gophers.slack.com/messages/training/
 1. Click the “Join Channel” button at the bottom of the screen.
-___
+
+---
+
 All material is licensed under the [Apache License Version 2.0, January 2004](http://www.apache.org/licenses/LICENSE-2.0).
