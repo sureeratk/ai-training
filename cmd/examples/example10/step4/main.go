@@ -411,12 +411,6 @@ func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (clien
 
 		newContent := strings.ReplaceAll(oldContent, oldStr, newStr)
 
-		fmt.Println("\n=======================================")
-		fmt.Println(oldContent)
-		fmt.Println("=======================================")
-		fmt.Println(newContent)
-		fmt.Print("=======================================\n\n")
-
 		if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
 			return client.D{}, fmt.Errorf("writing file: %w", err)
 		}
