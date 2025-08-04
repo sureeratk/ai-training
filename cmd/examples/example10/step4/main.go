@@ -14,7 +14,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -98,7 +97,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	fmt.Println("Chat with qwen3 (use 'ctrl-c' to quit)")
 
 	for {
-		// CHECK IF WE ARE IN A TOOL CALL BEFORE ASKING FOR INPUT.
 		if !inToolCall {
 			fmt.Print("\u001b[94m\nYou\u001b[0m: ")
 			userInput, ok := a.getUserMessage()
@@ -152,7 +150,8 @@ func (a *Agent) Run(ctx context.Context) error {
 				case len(resp.Message.ToolCalls) > 0:
 					result, err := a.callTools(ctx, resp.Message.ToolCalls)
 					if err != nil {
-						return fmt.Errorf("call tools: %w", err)
+						fmt.Print(err.Error())
+						continue
 					}
 
 					if len(result) > 0 {
@@ -184,6 +183,8 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (cli
 	for _, toolCall := range toolCalls {
 		for _, tool := range a.tools {
 			if toolCall.Function.Name == tool.Name() {
+				fmt.Printf("\u001b[92m\ntool\u001b[0m: %s(%s)", tool.Name(), toolCall.Function.Arguments)
+
 				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
 				if err != nil {
 					return client.D{}, fmt.Errorf("call: %w", err)
@@ -197,10 +198,6 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (cli
 }
 
 // =============================================================================
-
-type ReadFileInput struct {
-	Path string `json:"path"`
-}
 
 type ReadFile struct {
 	name string
@@ -237,13 +234,7 @@ func (rf ReadFile) ToolDocument() client.D {
 }
 
 func (rf ReadFile) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
-	var readFileInput ReadFileInput
-	err := json.Unmarshal([]byte(arguments["path"]), &readFileInput)
-	if err != nil {
-		return client.D{}, fmt.Errorf("unmarshal: %w", err)
-	}
-
-	content, err := os.ReadFile(readFileInput.Path)
+	content, err := os.ReadFile(arguments["path"])
 	if err != nil {
 		return client.D{}, fmt.Errorf("read file: %w", err)
 	}

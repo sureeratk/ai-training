@@ -159,7 +159,8 @@ func (a *Agent) Run(ctx context.Context) error {
 					// ADD SUPPORT FOR TOOL CALLING.
 					result, err := a.callTools(ctx, resp.Message.ToolCalls)
 					if err != nil {
-						return fmt.Errorf("call tools: %w", err)
+						fmt.Print(err.Error())
+						continue
 					}
 
 					if len(result) > 0 {
@@ -191,6 +192,8 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (cli
 	for _, toolCall := range toolCalls {
 		for _, tool := range a.tools {
 			if toolCall.Function.Name == tool.Name() {
+				fmt.Printf("\u001b[92m\ntool\u001b[0m: %s(%s)", tool.Name(), toolCall.Function.Arguments)
+
 				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
 				if err != nil {
 					return client.D{}, fmt.Errorf("call: %w", err)

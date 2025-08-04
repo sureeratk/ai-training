@@ -54,6 +54,9 @@ example10-step2:
 example10-step3:
 	go run cmd/examples/example10/step3/main.go
 
+example10-step4:
+	go run cmd/examples/example10/step4/main.go
+
 # ==============================================================================
 # Install dependencies
 
