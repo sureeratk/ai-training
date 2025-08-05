@@ -148,7 +148,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		inToolCall = false
 
 		d := client.D{
-			"model":          "qwen3:8b",
+			"model":          "qwen3:32b",
 			"messages":       conversation,
 			"max_tokens":     32768,
 			"temperature":    0.1,

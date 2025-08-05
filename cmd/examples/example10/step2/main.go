@@ -67,7 +67,7 @@ func weatherQuestion() error {
 	}
 
 	d := client.D{
-		"model":       "qwen3:8b",
+		"model":       "qwen3:32b",
 		"messages":    conversation,
 		"max_tokens":  1000,
 		"temperature": 0.1,
