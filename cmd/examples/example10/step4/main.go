@@ -79,7 +79,7 @@ func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (s
 	tools := []Tool{
 		NewReadFile(),
 		NewListFiles(),
-		NewEditFile(),
+		NewEditReplaceFile(),
 	}
 
 	toolDocs := make([]client.D, len(tools))
@@ -333,26 +333,26 @@ func (lf ListFiles) Call(ctx context.Context, arguments map[string]string) (clie
 
 // =============================================================================
 
-type EditFile struct {
+type EditReplaceFile struct {
 	name string
 }
 
-func NewEditFile() EditFile {
-	return EditFile{
-		name: "edit_file",
+func NewEditReplaceFile() EditReplaceFile {
+	return EditReplaceFile{
+		name: "edit_replace_file",
 	}
 }
 
-func (ef EditFile) Name() string {
+func (ef EditReplaceFile) Name() string {
 	return ef.name
 }
 
-func (ef EditFile) ToolDocument() client.D {
+func (ef EditReplaceFile) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
 			"name":        ef.Name(),
-			"description": "Make edits to a text file. Replaces 'old_str' with 'new_str' in the given file. 'old_str' and 'new_str' MUST be different from each other. If the file specified with path doesn't exist, it will be created with a sample hello world for that file type.",
+			"description": "Make replace edits to a text file. Replaces 'old_str' with 'new_str' in the given file. 'old_str' and 'new_str' MUST be different from each other. If the file specified with path doesn't exist, it will be created with a sample hello world for that file type.",
 			"parameters": client.D{
 				"type": "object",
 				"properties": client.D{
@@ -362,7 +362,7 @@ func (ef EditFile) ToolDocument() client.D {
 					},
 					"old_str": client.D{
 						"type":        "string",
-						"description": "Text to search for - must match exactly and must only have one match exactlye",
+						"description": "Text to search for - must match exactly and must only have one match exactly",
 					},
 					"new_str": client.D{
 						"type":        "string",
@@ -375,7 +375,7 @@ func (ef EditFile) ToolDocument() client.D {
 	}
 }
 
-func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
+func (ef EditReplaceFile) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
 	path := arguments["path"]
 	oldStr := strings.TrimSpace(arguments["old_str"])
 	newStr := strings.TrimSpace(arguments["new_str"])
@@ -411,7 +411,7 @@ func (ef EditFile) Call(ctx context.Context, arguments map[string]string) (clien
 	return client.D{}, nil
 }
 
-func (ef EditFile) createNewFile(filePath string, content string) (client.D, error) {
+func (ef EditReplaceFile) createNewFile(filePath string, content string) (client.D, error) {
 	dir := path.Dir(filePath)
 	if dir != "." {
 		err := os.MkdirAll(dir, 0755)
