@@ -15,6 +15,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -71,20 +72,24 @@ type Tool interface {
 type Agent struct {
 	client         *client.SSEClient[client.Chat]
 	getUserMessage func() (string, bool)
-	tools          []Tool
+	tools          map[string]Tool
 	toolDocuments  []client.D
 }
 
 func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
-	tools := []Tool{
-		NewReadFile(),
-		NewListFiles(),
-		NewEditReplaceFile(),
+	rf := NewReadFile()
+	lf := NewListFiles()
+	ef := NewEditReplaceFile()
+
+	tools := map[string]Tool{
+		rf.Name(): rf,
+		lf.Name(): lf,
+		ef.Name(): ef,
 	}
 
-	toolDocs := make([]client.D, len(tools))
-	for i, tool := range tools {
-		toolDocs[i] = tool.ToolDocument()
+	toolDocs := make([]client.D, 0, len(tools))
+	for _, tool := range tools {
+		toolDocs = append(toolDocs, tool.ToolDocument())
 	}
 
 	return &Agent{
@@ -193,21 +198,23 @@ func (a *Agent) Run(ctx context.Context) error {
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (client.D, error) {
 	for _, toolCall := range toolCalls {
-		for _, tool := range a.tools {
-			if toolCall.Function.Name == tool.Name() {
-				fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s)\n", tool.Name(), toolCall.Function.Arguments)
-				fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
-
-				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
-				if err != nil {
-					return client.D{}, fmt.Errorf("ERROR: %w", err)
-				}
-				return resp, nil
-			}
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
 		}
+
+		fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s)\n", tool.Name(), toolCall.Function.Arguments)
+		fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
+
+		resp, err := tool.Call(ctx, toolCall.Function.Arguments)
+		if err != nil {
+			return client.D{}, fmt.Errorf("ERROR: %w", err)
+		}
+
+		return resp, nil
 	}
 
-	return client.D{}, nil
+	return client.D{}, errors.New("no tools found")
 }
 
 // =============================================================================
@@ -230,7 +237,7 @@ func (rf ReadFile) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
-			"name":        rf.Name(),
+			"name":        rf.name,
 			"description": "Read the contents of a given relative file path. Use this when you want to see what's inside a file. Do not use this with directory names.",
 			"parameters": client.D{
 				"type": "object",
@@ -254,7 +261,7 @@ func (rf ReadFile) Call(ctx context.Context, arguments map[string]string) (clien
 
 	return client.D{
 		"role":    "tool",
-		"name":    rf.Name(),
+		"name":    rf.name,
 		"content": string(content),
 	}, nil
 }
@@ -279,7 +286,7 @@ func (lf ListFiles) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
-			"name":        lf.Name(),
+			"name":        lf.name,
 			"description": "List files and directories at a given path. If no path is provided, lists files in the current directory.",
 			"parameters": client.D{
 				"type": "object",
@@ -335,7 +342,7 @@ func (lf ListFiles) Call(ctx context.Context, arguments map[string]string) (clie
 
 	return client.D{
 		"role":    "tool",
-		"name":    lf.Name(),
+		"name":    lf.name,
 		"content": strings.Join(files, "\n"),
 	}, nil
 }
@@ -360,7 +367,7 @@ func (ef EditReplaceFile) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
-			"name":        ef.Name(),
+			"name":        ef.name,
 			"description": "Make replace edits to a text file. Replaces 'old_str' with 'new_str' in the given file. 'old_str' and 'new_str' MUST be different from each other. If the file specified with path doesn't exist, it will be created with a sample hello world for that file type.",
 			"parameters": client.D{
 				"type": "object",

@@ -14,6 +14,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -73,18 +74,19 @@ type Tool interface {
 type Agent struct {
 	client         *client.SSEClient[client.Chat]
 	getUserMessage func() (string, bool)
-	tools          []Tool
+	tools          map[string]Tool
 	toolDocuments  []client.D
 }
 
 func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
-	tools := []Tool{
-		NewGetWeather(),
+	gw := NewGetWeather()
+	tools := map[string]Tool{
+		gw.Name(): gw,
 	}
 
-	toolDocs := make([]client.D, len(tools))
-	for i, tool := range tools {
-		toolDocs[i] = tool.ToolDocument()
+	toolDocs := make([]client.D, 0, len(tools))
+	for _, tool := range tools {
+		toolDocs = append(toolDocs, tool.ToolDocument())
 	}
 
 	return &Agent{
@@ -195,21 +197,23 @@ func (a *Agent) Run(ctx context.Context) error {
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) (client.D, error) {
 	for _, toolCall := range toolCalls {
-		for _, tool := range a.tools {
-			if toolCall.Function.Name == tool.Name() {
-				fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s)\n", tool.Name(), toolCall.Function.Arguments)
-				fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
-
-				resp, err := tool.Call(ctx, toolCall.Function.Arguments)
-				if err != nil {
-					return client.D{}, fmt.Errorf("ERROR: %w", err)
-				}
-				return resp, nil
-			}
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
 		}
+
+		fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s)\n", tool.Name(), toolCall.Function.Arguments)
+		fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
+
+		resp, err := tool.Call(ctx, toolCall.Function.Arguments)
+		if err != nil {
+			return client.D{}, fmt.Errorf("ERROR: %w", err)
+		}
+
+		return resp, nil
 	}
 
-	return client.D{}, nil
+	return client.D{}, errors.New("no tools found")
 }
 
 // =============================================================================
@@ -232,7 +236,7 @@ func (gw GetWeather) ToolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
-			"name":        gw.Name(),
+			"name":        gw.name,
 			"description": "Get the current weather for a location",
 			"parameters": client.D{
 				"type": "object",
@@ -251,7 +255,7 @@ func (gw GetWeather) ToolDocument() client.D {
 func (gw GetWeather) Call(ctx context.Context, arguments map[string]string) (client.D, error) {
 	return client.D{
 		"role":    "tool",
-		"name":    gw.Name(),
+		"name":    gw.name,
 		"content": "hot and humid, 28 degrees celcius",
 	}, nil
 }
