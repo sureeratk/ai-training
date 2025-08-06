@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	url   = "http://localhost:11434/v1/chat/completions"
-	model = "gpt-oss:latest"
+	url           = "http://localhost:11434/v1/chat/completions"
+	model         = "gpt-oss:latest"
+	contextWindow = 168 * 1024 // 168KB
 )
 
 func main() {
@@ -69,7 +70,7 @@ func weatherQuestion(ctx context.Context) error {
 	d := client.D{
 		"model":       model,
 		"messages":    conversation,
-		"max_tokens":  32768,
+		"max_tokens":  contextWindow,
 		"temperature": 0.1,
 		"top_p":       0.1,
 		"top_k":       50,
@@ -78,7 +79,7 @@ func weatherQuestion(ctx context.Context) error {
 			getWeather.ToolDocument(),
 		},
 		"tool_selection": "auto",
-		"options":        client.D{"num_ctx": 32768},
+		"options":        client.D{"num_ctx": contextWindow},
 	}
 
 	ch := make(chan client.Chat, 100)
