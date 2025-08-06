@@ -122,9 +122,13 @@ func (cln *SSEClient[T]) Do(ctx context.Context, method string, endpoint string,
 		for scanner.Scan() {
 			line := scanner.Text()
 
+			if line == "" || line == "data: [DONE]" {
+				continue
+			}
+
 			var v T
-			if err := json.Unmarshal([]byte(line), &v); err != nil {
-				cln.log(ctx, "sseclient: rawRequest:", "Unmarshal", err, "line", line)
+			if err := json.Unmarshal([]byte(line[6:]), &v); err != nil {
+				cln.log(ctx, "sseclient: rawRequest:", "Unmarshal", err, "line", line[6:])
 				return
 			}
 

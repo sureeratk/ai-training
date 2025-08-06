@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -51,23 +52,58 @@ func (t Time) MarshalJSON() ([]byte, error) {
 // =============================================================================
 
 type Function struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
+	Name      string
+	Arguments map[string]any
+}
+
+func (f *Function) UnmarshalJSON(b []byte) error {
+	var tmp struct {
+		Name         string `json:"name"`
+		RawArguments string `json:"arguments"`
+	}
+
+	if err := json.Unmarshal(b, &tmp); err != nil {
+		return err
+	}
+
+	arguments := make(map[string]any)
+	if err := json.Unmarshal([]byte(tmp.RawArguments), &arguments); err != nil {
+		return err
+	}
+
+	*f = Function{
+		Name:      tmp.Name,
+		Arguments: arguments,
+	}
+
+	return nil
 }
 
 type ToolCall struct {
+	ID       string   `json:"id,omitempty"`
+	Index    int      `json:"index"`
+	Type     string   `json:"type,omitempty"`
 	Function Function `json:"function"`
 }
 
-type ChatMessage struct {
+type ChatDelta struct {
 	Role      string     `json:"role"`
 	Content   string     `json:"content"`
-	ToolCalls []ToolCall `json:"tool_calls"`
+	Reasoning string     `json:"reasoning"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+}
+
+type ChatChoice struct {
+	Index        int       `json:"index"`
+	Delta        ChatDelta `json:"delta"`
+	FinishReason string    `json:"finish_reason"`
 }
 
 type Chat struct {
-	Model   string      `json:"model"`
-	Created Time        `json:"created"`
-	Message ChatMessage `json:"message"`
-	Done    bool        `json:"done"`
+	ID      string       `json:"id"`
+	Object  string       `json:"object"`
+	Created Time         `json:"created"`
+	Model   string       `json:"model"`
+	Choices []ChatChoice `json:"choices"`
+	Error   string       `json:"error"`
 }

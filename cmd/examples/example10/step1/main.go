@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	url   = "http://localhost:11434/api/chat"
+	url   = "http://localhost:11434/v1/chat/completions"
 	model = "gpt-oss:latest"
 )
 
@@ -101,7 +101,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			"options":     client.D{"num_ctx": 32768},
 		}
 
-		fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
 
 		ch := make(chan client.Chat, 100)
 		if err := a.client.Do(ctx, http.MethodPost, url, d, ch); err != nil {
@@ -110,11 +110,22 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		var chunks []string
 
+		thinking := true
+		fmt.Print("\n<reasoning>\n")
+
 		for resp := range ch {
 			switch {
-			case resp.Message.Content != "":
-				fmt.Print(resp.Message.Content)
-				chunks = append(chunks, resp.Message.Content)
+			case resp.Choices[0].Delta.Content != "":
+				if thinking {
+					thinking = false
+					fmt.Print("\n</reasoning>\n\n")
+				}
+
+				fmt.Print(resp.Choices[0].Delta.Content)
+				chunks = append(chunks, resp.Choices[0].Delta.Content)
+
+			case resp.Choices[0].Delta.Reasoning != "":
+				fmt.Print(resp.Choices[0].Delta.Reasoning)
 			}
 		}
 

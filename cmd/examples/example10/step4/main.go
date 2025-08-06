@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	url   = "http://localhost:11434/api/chat"
+	url   = "http://localhost:11434/v1/chat/completions"
 	model = "gpt-oss:latest"
 )
 
@@ -166,7 +166,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			"options":        client.D{"num_ctx": 32768},
 		}
 
-		fmt.Print("\u001b[93m\nqwen3\u001b[0m: ")
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
 
 		ch := make(chan client.Chat, 100)
 		if err := a.client.Do(ctx, http.MethodPost, url, d, ch); err != nil {
@@ -174,38 +174,44 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		var chunks []string
-		var thinking bool
+
+		thinking := true
+		fmt.Print("\u001b[91m\n\n<reasoning>\n\u001b[0m")
 
 		for resp := range ch {
-			switch resp.Message.Content {
-			case "<think>":
-				thinking = true
-			case "</think>":
-				thinking = false
-			}
-
 			switch {
-			case len(resp.Message.ToolCalls) > 0:
-				if compareToolCalls(lastToolCall, resp.Message.ToolCalls) {
+			case len(resp.Choices[0].Delta.ToolCalls) > 0:
+				if thinking {
+					thinking = false
+					fmt.Print("\u001b[91m\n</reasoning>\n\n\u001b[0m")
+				}
+
+				if compareToolCalls(lastToolCall, resp.Choices[0].Delta.ToolCalls) {
 					conversation = append(conversation, lastToolResponse...)
 					continue
 				}
 
-				results := a.callTools(ctx, resp.Message.ToolCalls)
+				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)
 				if len(results) > 0 {
 					conversation = append(conversation, results...)
 					inToolCall = true
-					lastToolCall = resp.Message.ToolCalls
+					lastToolCall = resp.Choices[0].Delta.ToolCalls
 					lastToolResponse = results
 				}
 
-			case resp.Message.Content != "":
-				fmt.Print(resp.Message.Content)
-				if !thinking && resp.Message.Content != "</think>" {
-					chunks = append(chunks, resp.Message.Content)
+			case resp.Choices[0].Delta.Content != "":
+				if thinking {
+					thinking = false
+					fmt.Print("\u001b[91m\n</reasoning>\n\n\u001b[0m")
 				}
+
+				fmt.Print(resp.Choices[0].Delta.Content)
+				chunks = append(chunks, resp.Choices[0].Delta.Content)
 				lastToolCall = nil
 				lastToolResponse = nil
+
+			case resp.Choices[0].Delta.Reasoning != "":
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 			}
 		}
 

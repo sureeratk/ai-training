@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	url   = "http://localhost:11434/api/chat"
+	url   = "http://localhost:11434/v1/chat/completions"
 	model = "gpt-oss:latest"
 )
 
@@ -57,7 +57,7 @@ func weatherQuestion(ctx context.Context) error {
 	var getWeather GetWeather
 
 	q := "What is the weather like in New York City?"
-	fmt.Printf("\nQuestion:\n\n%s\n\n", q)
+	fmt.Printf("\nQuestion:\n\n%s\n", q)
 
 	conversation := []client.D{
 		{
@@ -90,18 +90,34 @@ func weatherQuestion(ctx context.Context) error {
 	// The model will respond asking us to make the get_current_weather function
 	// call. We will make the call and then send the response back to the model.
 
+	thinking := true
+	fmt.Print("\n<reasoning>\n")
+
 	for resp := range ch {
-		fmt.Print(resp.Message.Content)
-
-		if len(resp.Message.ToolCalls) > 0 {
-			if resp.Message.ToolCalls[0].Function.Name == "get_current_weather" {
-				fmt.Printf("Model Asking For Tool Call:\n\n%s(%s)\n\n", resp.Message.ToolCalls[0].Function.Name, resp.Message.ToolCalls[0].Function.Arguments)
-
-				resp := getWeather.Call(ctx, resp.Message.ToolCalls[0].Function.Arguments)
-				conversation = append(conversation, resp)
-
-				fmt.Printf("Tool Call Result:\n\n%s\n\n", resp)
+		switch {
+		case len(resp.Choices[0].Delta.ToolCalls) > 0:
+			if thinking {
+				thinking = false
+				fmt.Print("\n</reasoning>\n\n")
 			}
+
+			fmt.Printf("Model Asking For Tool Call:\n\n%s(%s)\n\n", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+			resp := getWeather.Call(ctx, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+			conversation = append(conversation, resp)
+
+			fmt.Printf("Tool Call Result:\n\n%s\n\n", resp)
+
+		case resp.Choices[0].Delta.Content != "":
+			if thinking {
+				thinking = false
+				fmt.Print("\n</reasoning>\n\n")
+			}
+
+			fmt.Print(resp.Choices[0].Delta.Content)
+
+		case resp.Choices[0].Delta.Reasoning != "":
+			fmt.Print(resp.Choices[0].Delta.Reasoning)
 		}
 	}
 
@@ -131,13 +147,31 @@ func weatherQuestion(ctx context.Context) error {
 	// -------------------------------------------------------------------------
 	// The model should provide the answer based on the tool call
 
-	fmt.Print("Final Result:\n\n")
+	fmt.Print("Final Result:\n")
+
+	thinking = true
+	fmt.Print("\n<reasoning>\n")
 
 	for resp := range ch {
-		fmt.Print(resp.Message.Content)
+		switch {
+		case len(resp.Choices[0].Delta.ToolCalls) > 0:
+			if thinking {
+				thinking = false
+				fmt.Print("\n</reasoning>\n\n")
+			}
 
-		if len(resp.Message.ToolCalls) > 0 {
-			fmt.Printf("Model Asking For Tool Call:\n\n%s(%s)\n\n", resp.Message.ToolCalls[0].Function.Name, resp.Message.ToolCalls[0].Function.Arguments)
+			fmt.Printf("Model Asking For Tool Call:\n\n%s(%s)\n\n", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+		case resp.Choices[0].Delta.Content != "":
+			if thinking {
+				thinking = false
+				fmt.Print("\n</reasoning>\n\n")
+			}
+
+			fmt.Print(resp.Choices[0].Delta.Content)
+
+		case resp.Choices[0].Delta.Reasoning != "":
+			fmt.Print(resp.Choices[0].Delta.Reasoning)
 		}
 	}
 
