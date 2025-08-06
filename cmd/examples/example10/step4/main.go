@@ -127,6 +127,8 @@ Reasoning: high
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 	var inToolCall bool
+	var lastToolCall []client.ToolCall
+	var lastToolResponse []client.D
 
 	conversation = append(conversation, client.D{
 		"role":    "system",
@@ -184,10 +186,17 @@ func (a *Agent) Run(ctx context.Context) error {
 
 			switch {
 			case len(resp.Message.ToolCalls) > 0:
+				if compareToolCalls(lastToolCall, resp.Message.ToolCalls) {
+					conversation = append(conversation, lastToolResponse...)
+					continue
+				}
+
 				results := a.callTools(ctx, resp.Message.ToolCalls)
 				if len(results) > 0 {
 					conversation = append(conversation, results...)
 					inToolCall = true
+					lastToolCall = resp.Message.ToolCalls
+					lastToolResponse = results
 				}
 
 			case resp.Message.Content != "":
@@ -195,6 +204,8 @@ func (a *Agent) Run(ctx context.Context) error {
 				if !thinking && resp.Message.Content != "</think>" {
 					chunks = append(chunks, resp.Message.Content)
 				}
+				lastToolCall = nil
+				lastToolResponse = nil
 			}
 		}
 
@@ -214,6 +225,26 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func compareToolCalls(last []client.ToolCall, current []client.ToolCall) bool {
+	if len(last) != len(current) {
+		return false
+	}
+
+	for i := range last {
+		if last[i].Function.Name != current[i].Function.Name {
+			return false
+		}
+
+		if fmt.Sprintf("%v", last[i].Function.Arguments) != fmt.Sprintf("%v", current[i].Function.Arguments) {
+			return false
+		}
+	}
+
+	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", "Sending last response")
+
+	return true
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
