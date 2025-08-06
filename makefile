@@ -6,9 +6,15 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 # Remove Ollama Auto-Run
 #
 # We have discovered that Ollama is installing itself to run at login on all OS. 
+# MacOS
 # To remove this on the Mac go to `Settings/General/Login Items & Extensions`
-# and remove Ollama as a starup item. Then navigate to `~/Library/LaunchAgents`
+# and remove Ollama as a startup item. Then navigate to `~/Library/LaunchAgents`
 # and remove the Ollama file you will find.
+#
+# Linux
+# sudo systemctl stop ollama.service
+# sudo systemctl disable ollama.service
+#
 
 # ==============================================================================
 # Mongo support
@@ -105,7 +111,7 @@ ollama-logs:
 # Run Tooling
 
 download-data:
-	curl -o zarf/data/example3.gz -X GET http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_Cell_Phones_and_Accessories_5.json.gz \
+	curl -o zarf/data/example3.gz -X GET https://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_Cell_Phones_and_Accessories_5.json.gz \
 	&& gunzip -k -d zarf/data/example3.gz \
 	&& mv zarf/data/example3 zarf/data/example3.json
 

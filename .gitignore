@@ -34,3 +34,5 @@ change_log.txt
 # Go workspace file
 go.work
 go.work.sum
+.idea
+.vscode
