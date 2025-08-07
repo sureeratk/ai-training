@@ -10,6 +10,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+//	$ make compose-up // This starts the MongoDB service.
 package main
 
 import (
@@ -35,7 +36,7 @@ import (
 
 type document struct {
 	ID        string    `bson:"id"`
-	Embedding []float64 `bson:"embedding"`
+	Embedding []float32 `bson:"embedding"`
 }
 
 func main() {
@@ -111,6 +112,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("generate embeddings: %w", err)
 	}
+
+	fmt.Print("\n")
+	fmt.Println(vector[0])
+	fmt.Print("\n")
 
 	return updateDatabase(fileName, vector)
 }
@@ -200,7 +205,7 @@ func updateImage(fileName string, description string) error {
 	return nil
 }
 
-func generateEmbeddings(description string) ([][]float32, error) {
+func generateEmbeddings(description string) ([]float32, error) {
 	llm, err := ollama.New(
 		ollama.WithModel("mxbai-embed-large"),
 		ollama.WithServerURL("http://localhost:11434"),
@@ -216,10 +221,10 @@ func generateEmbeddings(description string) ([][]float32, error) {
 
 	fmt.Printf("Received embeddings from model: %v\n", vectors)
 
-	return vectors, nil
+	return vectors[0], nil
 }
 
-func updateDatabase(fileName string, vectors [][]float32) error {
+func updateDatabase(fileName string, vector []float32) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -255,7 +260,7 @@ func updateDatabase(fileName string, vectors [][]float32) error {
 	const indexName = "vector_index"
 
 	settings := mongodb.VectorIndexSettings{
-		NumDimensions: len(vectors[0]),
+		NumDimensions: 1024,
 		Path:          "embedding",
 		Similarity:    "cosine",
 	}
@@ -267,16 +272,30 @@ func updateDatabase(fileName string, vectors [][]float32) error {
 	fmt.Println("Created Vector Index")
 
 	// -------------------------------------------------------------------------
+	// Apply a unique index just to be safe.
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
+		return fmt.Errorf("createUniqueIndex: %w", err)
+	}
+
+	fmt.Println("Created Unique ID Index")
+
+	// -------------------------------------------------------------------------
 	// Store some documents with their embeddings.
 
-	if err := storeDocuments(ctx, col, fileName, vectors); err != nil {
+	if err := storeDocuments(ctx, col, fileName, vector); err != nil {
 		return fmt.Errorf("storeDocuments: %w", err)
 	}
 
 	return nil
 }
 
-func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, vectors [][]float32) error {
+func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, vector []float32) error {
 
 	// If these records already exist, we don't need to add them again.
 	findRes, err := col.Find(ctx, bson.D{})
@@ -291,21 +310,11 @@ func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string,
 
 	// -------------------------------------------------------------------------
 
-	// Apply a unique index just to be safe.
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	col.Indexes().CreateOne(ctx, indexModel)
-
-	// -------------------------------------------------------------------------
-
 	// Let's add the document to the database.
 
 	d1 := document{
 		ID:        fileName,
-		Embedding: float32ToFloat64(vectors[0]),
+		Embedding: vector,
 	}
 
 	res, err := col.InsertMany(ctx, []any{d1})
@@ -316,12 +325,4 @@ func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string,
 	fmt.Println(res.InsertedIDs)
 
 	return nil
-}
-
-func float32ToFloat64(src []float32) []float64 {
-	dst := make([]float64, len(src))
-	for i, v := range src {
-		dst[i] = float64(v)
-	}
-	return dst
 }

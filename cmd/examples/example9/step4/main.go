@@ -14,12 +14,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,19 +32,19 @@ import (
 	"github.com/tmc/langchaingo/llms/ollama"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type document struct {
-	ID        string    `bson:"id"`
-	Embedding []float64 `bson:"embedding"`
+	FileName    string    `bson:"file_name"`
+	Description string    `bson:"description"`
+	Embedding   []float32 `bson:"embedding"`
 }
 
 type searchResult struct {
-	ID        int       `bson:"id"`
-	Text      string    `bson:"text"`
-	Embedding []float64 `bson:"embedding"`
-	Score     float64   `bson:"score"`
+	FileName    string    `bson:"file_name" json:"file_name"`
+	Description string    `bson:"description" json:"image_description"`
+	Embedding   []float32 `bson:"embedding" json:"-"`
+	Score       float64   `bson:"score" json:"-"`
 }
 
 func main() {
@@ -121,10 +121,12 @@ func run() error {
 		return fmt.Errorf("generate embeddings: %w", err)
 	}
 
-	err = updateDatabase(fileName, vector)
+	err = updateDatabase(fileName, cr.Choices[0].Content, vector)
 	if err != nil {
 		return fmt.Errorf("update database: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Search the database for an image: ")
@@ -135,6 +137,8 @@ func run() error {
 	}
 
 	fmt.Print("THIS MAY TAKE A MINUTE OR MORE, BE PATIENT\n\n")
+
+	// -------------------------------------------------------------------------
 
 	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
@@ -236,7 +240,7 @@ func updateImage(fileName string, description string) error {
 	return nil
 }
 
-func generateEmbeddings(description string) ([][]float32, error) {
+func generateEmbeddings(description string) ([]float32, error) {
 	llm, err := ollama.New(
 		ollama.WithModel("mxbai-embed-large"),
 		ollama.WithServerURL("http://localhost:11434"),
@@ -250,12 +254,12 @@ func generateEmbeddings(description string) ([][]float32, error) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Received embeddings from model: %v\n", vectors)
+	fmt.Println("Received embeddings from model")
 
-	return vectors, nil
+	return vectors[0], nil
 }
 
-func updateDatabase(fileName string, vectors [][]float32) error {
+func updateDatabase(fileName string, description string, vector []float32) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -291,7 +295,7 @@ func updateDatabase(fileName string, vectors [][]float32) error {
 	const indexName = "vector_index"
 
 	settings := mongodb.VectorIndexSettings{
-		NumDimensions: len(vectors[0]),
+		NumDimensions: 1024,
 		Path:          "embedding",
 		Similarity:    "cosine",
 	}
@@ -305,14 +309,14 @@ func updateDatabase(fileName string, vectors [][]float32) error {
 	// -------------------------------------------------------------------------
 	// Store some documents with their embeddings.
 
-	if err := storeDocuments(ctx, col, fileName, vectors); err != nil {
+	if err := storeDocuments(ctx, col, fileName, description, vector); err != nil {
 		return fmt.Errorf("storeDocuments: %w", err)
 	}
 
 	return nil
 }
 
-func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, vectors [][]float32) error {
+func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
 
 	// If these records already exist, we don't need to add them again.
 	findRes, err := col.Find(ctx, bson.D{})
@@ -327,21 +331,12 @@ func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string,
 
 	// -------------------------------------------------------------------------
 
-	// Apply a unique index just to be safe.
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	col.Indexes().CreateOne(ctx, indexModel)
-
-	// -------------------------------------------------------------------------
-
-	// Let's add two documents to the database.
+	// Let's add a document to the database.
 
 	d1 := document{
-		ID:        fileName,
-		Embedding: float32ToFloat64(vectors[0]),
+		FileName:    fileName,
+		Description: description,
+		Embedding:   vector,
 	}
 
 	res, err := col.InsertMany(ctx, []any{d1})
@@ -401,7 +396,7 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 				"index":         "vector_index",
 				"exact":         false,
 				"path":          "embedding",
-				"queryVector":   float32ToFloat64(embedding[0]),
+				"queryVector":   embedding[0],
 				"numCandidates": 5,
 				"limit":         5,
 			}},
@@ -409,8 +404,9 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 		{{
 			Key: "$project",
 			Value: bson.M{
-				"id":        "",
-				"embedding": []float64{},
+				"file_name":   1,
+				"description": 1,
+				"embedding":   1,
 				"score": bson.M{
 					"$meta": "vectorSearchScore",
 				},
@@ -429,6 +425,10 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 		return nil, fmt.Errorf("all: %w", err)
 	}
 
+	fmt.Println("=======================================")
+	fmt.Println(results[0].FileName, results[0].Description, results[0].Score)
+	fmt.Print("=======================================\n")
+
 	return results, nil
 }
 
@@ -445,36 +445,44 @@ func questionResponse(ctx context.Context, question string, results []searchResu
 
 	// Format a prompt to direct the model what to do with the content and
 	// the question.
-	prompt := `Use the following pieces of information to answer the user's question.
+	prompt := `
+Use the following pieces of information to answer the user's question.
 	
-If you don't know the answer, say that you don't know.	
+If you don't know the answer, say that you cannot find anything matching the description.	
 
-Answer the question and provide additional helpful information.
+Answer the question only with the full filename, including path, of the picture matching the description without providing any additional details except what you already have.
 
-Responses should be properly formatted to be easily read.
-	
-Context: %s
+The response should be in a JSON format with the following fields:
+{"status": "found", "filename": "<filename>"}"
+
+If the file is missing, we should have this response:
+{"status": "not found"}
+
+Responses should be properly formatted and always a JSON like in the example.
+Make sure the path of the file is always the same as that specified in the context.
+Do not add anything to the path if the path is relative or not a fully qualified path.
+Ensure that output path is the one in the input path and matches every character.
+
+The data in the context is a JSON object with the following fields:
+[
+	{"file_name":"<filepath>", "image_description":"<description>"},
+]
+
+Context:
+%s
 	
 Question: %s
 `
-
-	// var wordCount int
-	var chunks strings.Builder
-
-	for _, res := range results {
-		if res.Score >= .70 {
-			chunks.WriteString(res.Text)
-			chunks.WriteString(".\n")
-		}
+	content, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
 	}
 
-	content := chunks.String()
-	if content == "" {
-		fmt.Println("Don't have enough information to provide an answer")
-		return nil
-	}
+	finalPrompt := fmt.Sprintf(prompt, string(content), question)
 
-	finalPrompt := fmt.Sprintf(prompt, content, question)
+	fmt.Print("\n=====================================\n")
+	fmt.Println(finalPrompt)
+	fmt.Print("\n======================================\n")
 
 	// Setup a wait group to wait for the entire response.
 	var wg sync.WaitGroup
@@ -500,12 +508,4 @@ Question: %s
 	wg.Wait()
 
 	return nil
-}
-
-func float32ToFloat64(src []float32) []float64 {
-	dst := make([]float64, len(src))
-	for i, v := range src {
-		dst[i] = float64(v)
-	}
-	return dst
 }
