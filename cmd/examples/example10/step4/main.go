@@ -130,7 +130,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 	var inToolCall bool
 	var lastToolCall []client.ToolCall
-	var lastToolResponse []client.D
 
 	conversation = append(conversation, client.D{
 		"role":    "system",
@@ -188,8 +187,10 @@ func (a *Agent) Run(ctx context.Context) error {
 					fmt.Print("\u001b[91m\n</reasoning>\n\n\u001b[0m")
 				}
 
-				if compareToolCalls(lastToolCall, resp.Choices[0].Delta.ToolCalls) {
-					conversation = append(conversation, lastToolResponse...)
+				result := compareToolCalls(lastToolCall, resp.Choices[0].Delta.ToolCalls)
+				if len(result) > 0 {
+					conversation = append(conversation, result)
+					inToolCall = true
 					continue
 				}
 
@@ -198,7 +199,6 @@ func (a *Agent) Run(ctx context.Context) error {
 					conversation = append(conversation, results...)
 					inToolCall = true
 					lastToolCall = resp.Choices[0].Delta.ToolCalls
-					lastToolResponse = results
 				}
 
 			case resp.Choices[0].Delta.Content != "":
@@ -210,7 +210,6 @@ func (a *Agent) Run(ctx context.Context) error {
 				fmt.Print(resp.Choices[0].Delta.Content)
 				chunks = append(chunks, resp.Choices[0].Delta.Content)
 				lastToolCall = nil
-				lastToolResponse = nil
 
 			case resp.Choices[0].Delta.Reasoning != "":
 				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
@@ -235,24 +234,25 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
-func compareToolCalls(last []client.ToolCall, current []client.ToolCall) bool {
+func compareToolCalls(last []client.ToolCall, current []client.ToolCall) client.D {
 	if len(last) != len(current) {
-		return false
+		return client.D{}
 	}
 
 	for i := range last {
 		if last[i].Function.Name != current[i].Function.Name {
-			return false
+			return client.D{}
 		}
 
 		if fmt.Sprintf("%v", last[i].Function.Arguments) != fmt.Sprintf("%v", current[i].Function.Arguments) {
-			return false
+			return client.D{}
 		}
 	}
 
-	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", "Sending last response")
+	fmt.Printf("\u001b[92mtool\u001b[0m: %s(%v)\n", current[0].Function.Name, current[0].Function.Arguments)
+	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", "Same tool call")
 
-	return true
+	return toolErrorResponse(current[0].Function.Name, errors.New("data already provided in a previous response, please review the conversation history"))
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
@@ -367,12 +367,8 @@ func (rf ReadFile) ToolDocument() client.D {
 						"type":        "string",
 						"description": "The relative path of a file in the working directory. If pattern is provided, this can be a directory path to search in.",
 					},
-					"pattern": client.D{
-						"type":        "string",
-						"description": " The pattern to search for in file contents. If not provided keep it empty. If provided, will search for files containing this pattern instead of reading a specific file.",
-					},
 				},
-				"required": []string{"path", "pattern"},
+				"required": []string{"path"},
 			},
 		},
 	}
@@ -384,69 +380,12 @@ func (rf ReadFile) Call(ctx context.Context, arguments map[string]any) client.D 
 		dir = arguments["path"].(string)
 	}
 
-	pattern := ""
-	if arguments["pattern"] != "" {
-		pattern = arguments["pattern"].(string)
+	content, err := os.ReadFile(dir)
+	if err != nil {
+		return toolErrorResponse(rf.name, err)
 	}
 
-	switch pattern {
-	case "":
-		content, err := os.ReadFile(dir)
-		if err != nil {
-			return toolErrorResponse(rf.name, err)
-		}
-		return toolSuccessResponse(rf.name, "file_contents", string(content))
-
-	default:
-		var files []any
-		err := filepath.Walk(dir, func(filePath string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			relPath, err := filepath.Rel(dir, filePath)
-			if err != nil {
-				return err
-			}
-
-			if strings.Contains(relPath, "zarf") ||
-				strings.Contains(relPath, "vendor") ||
-				strings.Contains(relPath, ".venv") ||
-				strings.Contains(relPath, ".git") {
-				return nil
-			}
-
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				return nil
-			}
-
-			lines := strings.Split(string(content), "\n")
-			var matchingLines []int
-
-			for i, line := range lines {
-				if strings.Contains(strings.ToLower(line), strings.ToLower(pattern)) {
-					matchingLines = append(matchingLines, i+1) // Line numbers are 1-indexed
-				}
-			}
-
-			if len(matchingLines) > 0 {
-				fileInfo := map[string]any{
-					"file":         relPath,
-					"line_numbers": matchingLines,
-				}
-				files = append(files, fileInfo)
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			return toolErrorResponse(rf.name, err)
-		}
-
-		return toolSuccessResponse(rf.name, "files", files)
-	}
+	return toolSuccessResponse(rf.name, "file_contents", string(content))
 }
 
 // =============================================================================
