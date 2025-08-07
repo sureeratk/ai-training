@@ -25,40 +25,40 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 # Examples
 
 example1:
-	go run cmd/examples/example1/main.go
+	go run cmd/examples/example01/main.go
 
 example2:
-	go run cmd/examples/example2/main.go
+	go run cmd/examples/example02/main.go
 
 example3:
-	go run -exec "env DYLD_LIBRARY_PATH=$$GOPATH/src/github.com/ardanlabs/ai-training/foundation/word2vec/libw2v/lib" cmd/examples/example3/main.go
+	go run -exec "env DYLD_LIBRARY_PATH=$$GOPATH/src/github.com/ardanlabs/ai-training/foundation/word2vec/libw2v/lib" cmd/examples/example03/main.go
 
 example4:
-	go run cmd/examples/example4/main.go
+	go run cmd/examples/example04/main.go
 
 example5:
-	go run cmd/examples/example5/main.go
+	go run cmd/examples/example05/main.go
 
 example6:
-	go run cmd/examples/example6/main.go
+	go run cmd/examples/example06/main.go
 
 example7:
-	go run cmd/examples/example7/main.go
+	go run cmd/examples/example07/main.go
 
 example8:
-	go run cmd/examples/example8/main.go
+	go run cmd/examples/example08/main.go
 
 example9-step1:
-	go run cmd/examples/example9/step1/main.go
+	go run cmd/examples/example09/step1/main.go
 
 example9-step2:
-	go run cmd/examples/example9/step2/main.go
+	go run cmd/examples/example09/step2/main.go
 
 example9-step3:
-	go run cmd/examples/example9/step3/main.go
+	go run cmd/examples/example09/step3/main.go
 
 example9-step4:
-	go run cmd/examples/example9/step4/main.go
+	go run cmd/examples/example09/step4/main.go
 
 example10-step1:
 	go run cmd/examples/example10/step1/main.go
