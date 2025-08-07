@@ -10,7 +10,6 @@
 *.dll
 *.so
 
-samples/
 zarf/data/book.embeddings
 zarf/data/example3.*
 zarf/docker/db_data/
