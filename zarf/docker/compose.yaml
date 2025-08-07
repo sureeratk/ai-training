@@ -34,7 +34,7 @@ services:
   #     - ./ollama:/root/.ollama
 
   openwebui:
-    image: dyrnq/open-webui:latest
+    image: ghcr.io/open-webui/open-webui:v0.6.18
     container_name: openwebui
     restart: always
     environment:
