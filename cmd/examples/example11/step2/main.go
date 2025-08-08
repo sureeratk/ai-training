@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -32,7 +33,7 @@ func main() {
 	flag.Parse()
 
 	if err := run(*host, *port); err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
 }
 
@@ -47,7 +48,7 @@ func run(host string, port string) error {
 		return err
 	}
 
-	fmt.Print("Test Successful\n\n")
+	fmt.Print("\nTest Successful\n\n")
 
 	fmt.Println("Holding the server open for extended testing.\n\nPress Ctrl+C to exit.")
 
@@ -61,93 +62,104 @@ func run(host string, port string) error {
 }
 
 // =============================================================================
+// Tools
 
-var text = `While it may not be obvious to everyone, there are a number of reasons creating random paragraphs can be useful. A few examples of how some people use this generator are listed in the following paragraphs.`
-
-type HiParams struct {
-	Name string `json:"name" jsonschema:"the name of the person to greet"`
+type ListFilesParams struct {
+	Filter string `json:"filter" jsonschema:"a possible filter to use"`
 }
 
-func SayHi(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[HiParams]) (*mcp.CallToolResultFor[any], error) {
+func ListFiles(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ListFilesParams]) (*mcp.CallToolResultFor[any], error) {
+	data := struct {
+		Status string   `json:"status"`
+		Filter string   `json:"filter"`
+		Files  []string `json:"files"`
+	}{
+		Status: "SUCCESS",
+		Filter: params.Arguments.Filter,
+		Files: []string{
+			"file1.txt",
+			"file2.txt",
+			"file3.txt",
+		},
+	}
+
+	d, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
 	return &mcp.CallToolResultFor[any]{
-		Content: []mcp.Content{&mcp.TextContent{Text: "Server: Hi " + params.Arguments.Name + "\n" + text}},
+		Content: []mcp.Content{&mcp.TextContent{
+			Text: string(d),
+		}},
 	}, nil
 }
 
-func SayError(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[any]) (*mcp.CallToolResultFor[any], error) {
-	return &mcp.CallToolResultFor[any]{
-		Content: []mcp.Content{&mcp.TextContent{Text: "Server: Error"}},
-	}, nil
-}
+// =============================================================================
+// Basic server implementation
 
 func server(host string, port string) {
-	server1 := mcp.NewServer(&mcp.Implementation{Name: "greeter1"}, nil)
-	mcp.AddTool(server1, &mcp.Tool{Name: "greet1", Description: "say hi"}, SayHi)
+	fileLister := mcp.NewServer(&mcp.Implementation{Name: "file_lister", Version: "v1.0.0"}, nil)
+	mcp.AddTool(fileLister, &mcp.Tool{Name: "list_files", Description: "lists files"}, ListFiles)
 
-	server2 := mcp.NewServer(&mcp.Implementation{Name: "greeter2"}, nil)
-	mcp.AddTool(server2, &mcp.Tool{Name: "greet2", Description: "say hello"}, SayHi)
-
-	server3 := mcp.NewServer(&mcp.Implementation{Name: "error"}, nil)
-	mcp.AddTool(server3, &mcp.Tool{Name: "error", Description: "error"}, SayError)
+	// -------------------------------------------------------------------------
 
 	addr := fmt.Sprintf("%s:%s", host, port)
-
 	log.Printf("Server: MCP servers serving at %s", addr)
+
+	// -------------------------------------------------------------------------
 
 	f := func(request *http.Request) *mcp.Server {
 		url := request.URL.Path
 		log.Printf("Server: Handling request for URL %s\n", url)
 
 		switch url {
-		case "/greet1":
-			return server1
-
-		case "/greet2":
-			return server2
+		case "/list_files":
+			return fileLister
 
 		default:
-			return server3
+			return mcp.NewServer(&mcp.Implementation{Name: "unknown_tool", Version: "v1.0.0"}, nil)
 		}
 	}
 
 	handler := mcp.NewSSEHandler(f)
-
 	log.Fatal(http.ListenAndServe(addr, handler))
 }
 
 // =============================================================================
+// Basic client code
 
 func client(host string, port string) error {
 	ctx := context.Background()
 
-	addr := fmt.Sprintf("http://%s:%s/greet1", host, port)
+	addr := fmt.Sprintf("http://%s:%s/list_files", host, port)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
 
 	transport := mcp.NewSSEClientTransport(addr, nil)
 
-	fmt.Println("Client: Connecting to MCP Server")
+	fmt.Print("Client: Connecting to MCP Server\n\n")
 
 	session, err := client.Connect(ctx, transport)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to connect to MCP server: %w", err)
 	}
 	defer session.Close()
 
 	params := &mcp.CallToolParams{
-		Name:      "greet1",
-		Arguments: map[string]any{"name": "you"},
+		Name:      "list_files",
+		Arguments: map[string]any{"filter": "*.go"},
 	}
 
-	fmt.Printf("Client: Calling Tool: %s(%v)\n", params.Name, params.Arguments)
+	fmt.Printf("\nClient: Calling Tool: %s(%v)\n", params.Name, params.Arguments)
 
 	res, err := session.CallTool(ctx, params)
 	if err != nil {
-		log.Fatalf("Tool Call FAILED: %v", err)
+		return fmt.Errorf("failed to call tool: %w", err)
 	}
 
 	if res.IsError {
-		log.Fatalf("Tool Call FAILED: %v", res.Content)
+		return fmt.Errorf("tool call failed: %s", res.Content)
 	}
 
 	fmt.Println("Client: Waiting for Response")
@@ -156,8 +168,6 @@ func client(host string, port string) error {
 		fmt.Print(c.(*mcp.TextContent).Text)
 	}
 	fmt.Print("\n")
-
-	fmt.Println("Client: Done")
 
 	return nil
 }
