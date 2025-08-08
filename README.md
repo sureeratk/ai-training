@@ -31,8 +31,12 @@ To run the examples in this repo, start by installing `mongosh` and `ollama` usi
 make install
 ```
 
-Next you want to pull down two images `mongodb/mongodb-atlas-local` and `dyrnq/open-webui:main`.
+Next you want to pull down these images:
+- `mongodb/mongodb-atlas-local`
+- `ghcr.io/open-webui/open-webui:v0.6.18`
+- `postgres:17.5`
 
+Run the following command to do so:
 ```
 make docker
 ```

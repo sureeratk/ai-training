@@ -112,12 +112,17 @@ compose-down:
 compose-logs:
 	docker compose logs -n 100
 
+# ==============================================================================
+# Ollama tooling
+
 ollama-up:
-	export OLLAMA_MODELS="zarf/docker/ollama/models" && \
 	ollama serve
 
 ollama-logs:
 	tail -f -n 100 ~/.ollama/logs/server.log
+
+ollama-list-models:
+	curl http://localhost:11434/api/tags
 
 # ==============================================================================
 # Run Tooling

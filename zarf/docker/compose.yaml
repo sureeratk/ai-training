@@ -24,15 +24,6 @@ services:
       - ./db_data/db:/data/db
       - ./db_data/configdb:/data/configdb
 
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: ollama
-  #   restart: always
-  #   ports:
-  #     - 11434:11434
-  #   volumes:
-  #     - ./ollama:/root/.ollama
-
   openwebui:
     image: ghcr.io/open-webui/open-webui:v0.6.18
     container_name: openwebui
@@ -50,5 +41,4 @@ services:
 volumes:
   postgres: {}
   mongodb: {}
-  # ollama: {}
   openwebui: {}
