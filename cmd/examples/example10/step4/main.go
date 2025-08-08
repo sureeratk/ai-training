@@ -85,7 +85,6 @@ func run() error {
 // Tool defines the interface that all tools must implement.
 type Tool interface {
 	Name() string
-	ToolDocument() client.D
 	Call(ctx context.Context, arguments map[string]any) client.D
 }
 
@@ -104,26 +103,6 @@ type Agent struct {
 func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) (*Agent, error) {
 
 	// -------------------------------------------------------------------------
-	// Construct the tools and initialize all the tool support.
-
-	rf := NewReadFile()
-	lf := NewListFiles()
-	cf := NewCreateFile()
-	gce := NewGoCodeEditor()
-
-	tools := map[string]Tool{
-		rf.Name():  rf,
-		lf.Name():  lf,
-		cf.Name():  cf,
-		gce.Name(): gce,
-	}
-
-	toolDocs := make([]client.D, 0, len(tools))
-	for _, tool := range tools {
-		toolDocs = append(toolDocs, tool.ToolDocument())
-	}
-
-	// -------------------------------------------------------------------------
 	// Construct the tokenizer.
 
 	tke, err := tiktoken.NewTiktoken()
@@ -134,15 +113,22 @@ func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (s
 	// -------------------------------------------------------------------------
 	// Construct the agent.
 
-	a := Agent{
+	tools := map[string]Tool{}
+
+	agent := Agent{
 		client:         sseClient,
 		getUserMessage: getUserMessage,
-		tools:          tools,
-		toolDocuments:  toolDocs,
 		tke:            tke,
+		tools:          tools,
+		toolDocuments: []client.D{
+			NewReadFile(tools),
+			NewListFiles(tools),
+			NewCreateFile(tools),
+			NewGoCodeEditor(tools),
+		},
 	}
 
-	return &a, nil
+	return &agent, nil
 }
 
 // The system prompt for the model so it behaves as expected.
@@ -220,7 +206,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// ---------------------------------------------------------------------
-		// Now we will make a call to the model
+		// Now we will make a call to the model.
 
 		var chunks []string      // Store the response chunks since we are streaming
 		reasonThinking := false  // GPT models provide a Reasoning field
@@ -472,11 +458,15 @@ type ReadFile struct {
 	name string
 }
 
-// NewReadFile creates a new instance of ReadFile.
-func NewReadFile() *ReadFile {
-	return &ReadFile{
+// NewReadFile creates a new instance of the ReadFile tool and loads it
+// into the provided tools map.
+func NewReadFile(tools map[string]Tool) client.D {
+	rf := ReadFile{
 		name: "read_file",
 	}
+	tools[rf.name] = &rf
+
+	return rf.toolDocument()
 }
 
 // Name returns the name of the tool.
@@ -485,7 +475,7 @@ func (rf *ReadFile) Name() string {
 }
 
 // ToolDocument defines the metadata for the tool that is provied to the model.
-func (rf *ReadFile) ToolDocument() client.D {
+func (rf *ReadFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
@@ -535,11 +525,15 @@ type ListFiles struct {
 	name string
 }
 
-// NewListFiles creates a new instance of ListFiles.
-func NewListFiles() *ListFiles {
-	return &ListFiles{
+// NewListFiles creates a new instance of the ListFiles tool and loads it
+// into the provided tools map.
+func NewListFiles(tools map[string]Tool) client.D {
+	lf := ListFiles{
 		name: "list_files",
 	}
+	tools[lf.name] = &lf
+
+	return lf.toolDocument()
 }
 
 // Name returns the name of the tool.
@@ -547,8 +541,8 @@ func (lf *ListFiles) Name() string {
 	return lf.name
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
-func (lf *ListFiles) ToolDocument() client.D {
+// toolDocument defines the metadata for the tool that is provied to the model.
+func (lf *ListFiles) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
@@ -648,11 +642,15 @@ type CreateFile struct {
 	name string
 }
 
-// NewCreateFile creates a new instance of CreateFile.
-func NewCreateFile() *CreateFile {
-	return &CreateFile{
+// NewCreateFile creates a new instance of the CreateFile tool and loads it
+// into the provided tools map.
+func NewCreateFile(tools map[string]Tool) client.D {
+	cf := CreateFile{
 		name: "create_file",
 	}
+	tools[cf.name] = &cf
+
+	return cf.toolDocument()
 }
 
 // Name returns the name of the tool.
@@ -660,8 +658,8 @@ func (cf *CreateFile) Name() string {
 	return cf.name
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
-func (cf *CreateFile) ToolDocument() client.D {
+// toolDocument defines the metadata for the tool that is provied to the model.
+func (cf *CreateFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
@@ -718,11 +716,15 @@ type GoCodeEditor struct {
 	name string
 }
 
-// NewGoCodeEditor creates a new instance of GoCodeEditor.
-func NewGoCodeEditor() *GoCodeEditor {
-	return &GoCodeEditor{
-		name: "golang_code_editor",
+// NewGoCodeEditor creates a new instance of the GoCodeEditor tool and loads it
+// into the provided tools map.
+func NewGoCodeEditor(tools map[string]Tool) client.D {
+	gce := GoCodeEditor{
+		name: "go_code_editor",
 	}
+	tools[gce.name] = &gce
+
+	return gce.toolDocument()
 }
 
 // Name returns the name of the tool.
@@ -730,8 +732,8 @@ func (gce *GoCodeEditor) Name() string {
 	return gce.name
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
-func (gce *GoCodeEditor) ToolDocument() client.D {
+// toolDocument defines the metadata for the tool that is provied to the model.
+func (gce *GoCodeEditor) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{

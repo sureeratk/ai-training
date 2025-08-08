@@ -67,7 +67,6 @@ func run() error {
 // Tool defines the interface that all tools must implement.
 type Tool interface {
 	Name() string
-	ToolDocument() client.D
 	Call(ctx context.Context, arguments map[string]any) client.D
 }
 
@@ -88,25 +87,17 @@ type Agent struct {
 // NewAgent creates a new instance of Agent.
 func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
 
-	// PRE-CONSTRUCT ALL THE TOOLS AND TOOL DOCUMENTS.
+	// CONSTRUCT THE TOOLS ALONG WITH THEIR DOCUMENTS.
 
-	gw := NewGetWeather()
-	tools := map[string]Tool{
-		gw.Name(): gw,
-	}
-
-	toolDocs := make([]client.D, 0, len(tools))
-	for _, tool := range tools {
-		toolDocs = append(toolDocs, tool.ToolDocument())
-	}
-
-	// ADD TOOL SUPPORT TO THE AGENT.
+	tools := map[string]Tool{}
 
 	return &Agent{
 		client:         sseClient,
 		getUserMessage: getUserMessage,
 		tools:          tools,
-		toolDocuments:  toolDocs,
+		toolDocuments: []client.D{
+			NewGetWeather(tools),
+		},
 	}
 }
 
@@ -232,11 +223,15 @@ type GetWeather struct {
 	name string
 }
 
-// NewGetWeather creates a new instance of GetWeather.
-func NewGetWeather() *GetWeather {
-	return &GetWeather{
+// NewGetWeather creates a new instance of the GetWeather tool and loads it
+// into the provided tools map.
+func NewGetWeather(tools map[string]Tool) client.D {
+	gw := GetWeather{
 		name: "get_current_weather",
 	}
+	tools[gw.name] = &gw
+
+	return gw.toolDocument()
 }
 
 // Name returns the name of the tool.
@@ -244,8 +239,8 @@ func (gw *GetWeather) Name() string {
 	return gw.name
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
-func (gw *GetWeather) ToolDocument() client.D {
+// toolDocument defines the metadata for the tool that is provied to the model.
+func (gw *GetWeather) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
