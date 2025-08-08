@@ -2,7 +2,9 @@
 // https://github.com/modelcontextprotocol/go-sdk/blob/main/design/design.md
 // https://github.com/orgs/modelcontextprotocol/discussions/364
 //
-// This example shows you create a basic client/server MCP interaction.
+// This example shows you how to create a basic MCP interaction where the Server
+// is a CLI tool that hosts a set of tooling that is called by the Client for
+// local machine interactions. This is what we need for example10 tooling.
 //
 // # Running the example:
 //
@@ -58,7 +60,6 @@ func SayHi(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParam
 
 func server() {
 	server := mcp.NewServer(&mcp.Implementation{Name: "greeter", Version: "v1.0.0"}, nil)
-
 	mcp.AddTool(server, &mcp.Tool{Name: "greet", Description: "say hi"}, SayHi)
 
 	if err := server.Run(context.Background(), mcp.NewStdioTransport()); err != nil {
@@ -72,8 +73,8 @@ func client() error {
 	ctx := context.Background()
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
-
 	transport := mcp.NewCommandTransport(exec.Command(os.Args[0], "-server", "true"))
+
 	session, err := client.Connect(ctx, transport)
 	if err != nil {
 		log.Fatal(err)

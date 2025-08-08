@@ -78,6 +78,9 @@ example10-step4:
 example11-step1:
 	go run cmd/examples/example11/step1/main.go
 
+example11-step2:
+	go run cmd/examples/example11/step2/main.go
+
 # ==============================================================================
 # Install dependencies
 
@@ -238,24 +241,40 @@ curl-tooling:
 	"options": { "num_ctx": 32000 } \
 	}'
 
-curl-tooling-stream:
-	curl http://localhost:11434/v1/chat/completions \
+# ==============================================================================
+
+# This will establish a SSE session and this is where we will get the sessionID
+# and the results of the call.
+curl-mcp-get-session:
+	curl -N -H "Accept: text/event-stream" http://localhost:8080/greet1
+
+# Once we have the sessionID, we can initialize the session.
+# Replace the sessionID with the one you get from the SSE session.
+curl-mcp-init:
+	curl -X POST http://localhost:8080/greet1?sessionid=<SESSIONID> \
 	-H "Content-Type: application/json" \
 	-d '{ \
-	"model": "gpt-oss:latest", \
-	"messages": [ \
-		{ \
-			"role": "user", \
-			"content": "How are you?" \
+		"jsonrpc": "2.0", \
+		"id": 1, \
+		"method": "initialize", \
+		"params": { \
+			"protocolVersion": "2024-11-05", \
+			"capabilities": {}, \
+			"clientInfo": {"name": "curl-client", "version": "1.0.0"} \
 		} \
-	], \
-	"stream": true \
 	}'
 
-curl-tokenize:
-	curl http://localhost:11434/v1/tokenize \
+# Then we can make the actual tool call. The response will be streamed in the
+# session call. Replace the sessionID with the one you get from the SSE session.
+curl-mcp-tool-call:
+	curl -X POST http://localhost:8080/greet1?sessionid=<SESSIONID> \
 	-H "Content-Type: application/json" \
 	-d '{ \
-	"model": "gpt-oss:latest", \
-	"text": "How are you?" \
+		"jsonrpc": "2.0", \
+		"id": 1, \
+		"method": "tools/call", \
+		"params": { \
+			"name": "greet1", \
+			"arguments": {"name": "you"} \
+		} \
 	}'
