@@ -289,14 +289,14 @@ func updateDatabase(fileName string, description string, vector []float32) error
 
 	unique := true
 	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
+		Keys:    bson.D{{Key: "file_name", Value: 1}},
 		Options: &options.IndexOptions{Unique: &unique},
 	}
 	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
 		return fmt.Errorf("createUniqueIndex: %w", err)
 	}
 
-	fmt.Println("Created Unique ID Index")
+	fmt.Println("Created Unique file_name Index")
 
 	// -------------------------------------------------------------------------
 	// Store some documents with their embeddings.
