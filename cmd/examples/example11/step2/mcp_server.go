@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -15,6 +17,7 @@ func mcpListenAndServe(host string) {
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file_operations", Version: "v1.0.0"}, nil)
 
 	RegisterReadFileTool(fileOperations)
+	RegisterShellCommandTool(fileOperations)
 
 	// -------------------------------------------------------------------------
 
@@ -39,7 +42,6 @@ func mcpListenAndServe(host string) {
 }
 
 // =============================================================================
-// Tools
 
 // RegisterReadFileTool registers the read_file tool with the given MCP server.
 func RegisterReadFileTool(mcpServer *mcp.Server) {
@@ -85,6 +87,48 @@ func ReadFileTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTo
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(data),
+		}},
+	}, nil
+}
+
+// =============================================================================
+
+// RegisterShellCommandTool registers the shell_command tool with the given MCP server.
+func RegisterShellCommandTool(mcpServer *mcp.Server) {
+	const toolName = "shell_command"
+	const tooDescription = "Execute a shell command with parameters and return the output."
+
+	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, ShellCommand)
+}
+
+type ShellCommandParams struct {
+	Command []string `json:"command" jsonschema:"the command and arguments to execute"`
+}
+
+func ShellCommand(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ShellCommandParams]) (*mcp.CallToolResultFor[any], error) {
+	var out bytes.Buffer
+	cmd := exec.Command(params.Arguments.Command[0], params.Arguments.Command[1:]...)
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	data := struct {
+		Command []string `json:"command"`
+		Output  string   `json:"output"`
+	}{
+		Command: params.Arguments.Command,
+		Output:  out.String(),
+	}
+
+	d, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{
+			Text: string(d),
 		}},
 	}, nil
 }
