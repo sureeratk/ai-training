@@ -22,9 +22,11 @@ import (
 )
 
 const (
-	url           = "http://localhost:11434/v1/chat/completions"
-	model         = "gpt-oss:latest"
-	contextWindow = 168 * 1024 // 168K tokens
+	url             = "http://localhost:11434/v1/chat/completions"
+	model           = "gpt-oss:latest"
+	maxInputTokens  = 1024 * 8
+	maxOutputTokens = 1024 * 16
+	contextWindow   = maxInputTokens + maxOutputTokens
 )
 
 func main() {
@@ -50,7 +52,7 @@ func weatherQuestion(ctx context.Context) error {
 		log.Println(s)
 	}
 
-	cln := client.NewSSE[client.Chat](logger)
+	cln := client.NewSSE[client.ChatSSE](logger)
 
 	// -------------------------------------------------------------------------
 	// Start by asking what the weather is like in New York City
@@ -70,7 +72,7 @@ func weatherQuestion(ctx context.Context) error {
 	d := client.D{
 		"model":       model,
 		"messages":    conversation,
-		"max_tokens":  contextWindow,
+		"max_tokens":  maxOutputTokens,
 		"temperature": 0.0,
 		"top_p":       0.1,
 		"top_k":       1,
@@ -82,7 +84,7 @@ func weatherQuestion(ctx context.Context) error {
 		"options":        client.D{"num_ctx": contextWindow},
 	}
 
-	ch := make(chan client.Chat, 100)
+	ch := make(chan client.ChatSSE, 100)
 	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
 		return fmt.Errorf("do: %w", err)
 	}
@@ -126,7 +128,7 @@ func weatherQuestion(ctx context.Context) error {
 		"options":        client.D{"num_ctx": 32768},
 	}
 
-	ch = make(chan client.Chat, 100)
+	ch = make(chan client.ChatSSE, 100)
 	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
 		return fmt.Errorf("do: %w", err)
 	}

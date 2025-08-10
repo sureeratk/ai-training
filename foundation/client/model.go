@@ -86,17 +86,38 @@ type ToolCall struct {
 	Function Function `json:"function"`
 }
 
-type ChatDelta struct {
+type ChatDeltaSSE struct {
 	Role      string     `json:"role"`
 	Content   string     `json:"content"`
 	Reasoning string     `json:"reasoning"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
+type ChatChoiceSSE struct {
+	Index        int          `json:"index"`
+	Delta        ChatDeltaSSE `json:"delta"`
+	FinishReason string       `json:"finish_reason"`
+}
+
+type ChatSSE struct {
+	ID      string          `json:"id"`
+	Object  string          `json:"object"`
+	Created Time            `json:"created"`
+	Model   string          `json:"model"`
+	Choices []ChatChoiceSSE `json:"choices"`
+	Error   string          `json:"error"`
+}
+
+// =============================================================================
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ChatChoice struct {
-	Index        int       `json:"index"`
-	Delta        ChatDelta `json:"delta"`
-	FinishReason string    `json:"finish_reason"`
+	Index   int         `json:"index"`
+	Message ChatMessage `json:"message"`
 }
 
 type Chat struct {
@@ -105,5 +126,4 @@ type Chat struct {
 	Created Time         `json:"created"`
 	Model   string       `json:"model"`
 	Choices []ChatChoice `json:"choices"`
-	Error   string       `json:"error"`
 }

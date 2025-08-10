@@ -34,13 +34,14 @@ import (
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/tiktoken"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
 	url             = "http://localhost:11434/v1/chat/completions"
 	model           = "gpt-oss:latest"
-	maxInputTokens  = 1024 * 8
-	maxOutputTokens = 1024 * 16
+	maxInputTokens  = 8192
+	maxOutputTokens = 8192
 	contextWindow   = maxInputTokens + maxOutputTokens
 )
 
@@ -51,6 +52,10 @@ func main() {
 }
 
 func run() error {
+	go func() {
+		server("localhost", "8080")
+	}()
+
 	// -------------------------------------------------------------------------
 	// Declare a function that can accept user input which the agent will use
 	// when it's the users turn.
@@ -520,23 +525,51 @@ func (rf *ReadFile) Call(ctx context.Context, arguments map[string]any) (resp cl
 		}
 	}()
 
-	dir := "."
-	if arguments["path"] != "" {
-		dir = arguments["path"].(string)
+	host := "localhost"
+	port := "8080"
+	tool := "read_file"
+
+	addr := fmt.Sprintf("http://%s:%s/%s", host, port, tool)
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
+
+	transport := mcp.NewSSEClientTransport(addr, nil)
+
+	fmt.Print("\u001b[92mtool: connecting to MCP Server\u001b[0m:\n")
+
+	session, err := client.Connect(ctx, transport)
+	if err != nil {
+		return toolErrorResponse(rf.name, fmt.Errorf("failed to connect to MCP server: %w", err))
+	}
+	defer session.Close()
+
+	params := &mcp.CallToolParams{
+		Name:      tool,
+		Arguments: arguments,
 	}
 
-	content, err := os.ReadFile(dir)
+	fmt.Printf("\u001b[92mtool: calling tool: %s\u001b[0m\n\n", addr)
+
+	res, err := session.CallTool(ctx, params)
 	if err != nil {
+		return toolErrorResponse(rf.name, fmt.Errorf("failed to call tool: %w", err))
+	}
+
+	if res.IsError {
+		return toolErrorResponse(rf.name, fmt.Errorf("tool call failed: %s", res.Content))
+	}
+
+	var info struct {
+		Data map[string]string `json:"data"`
+	}
+
+	data := res.Content[0].(*mcp.TextContent).Text
+
+	if err := json.Unmarshal([]byte(data), &info); err != nil {
 		return toolErrorResponse(rf.name, err)
 	}
 
-	v := string(content)
-	words := strings.Fields(v)
-	if len(words) > 4096 {
-		words = words[:4096]
-	}
-
-	return toolSuccessResponse(rf.name, "file_contents", strings.Join(words, " "))
+	return toolSuccessResponse(rf.name, "file_contents", info.Data["file_contents"])
 }
 
 // =============================================================================

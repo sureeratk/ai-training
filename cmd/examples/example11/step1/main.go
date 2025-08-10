@@ -103,7 +103,7 @@ func testClient() error {
 		Arguments: map[string]any{"filter": "*.go"},
 	}
 
-	fmt.Printf("\nClient: Calling Tool: %s(%v)\n", params.Name, params.Arguments)
+	fmt.Printf("\nClient: Calling Tool: %s(%v)\n\n", params.Name, params.Arguments)
 
 	res, err := session.CallTool(ctx, params)
 	if err != nil {
@@ -113,8 +113,6 @@ func testClient() error {
 	if res.IsError {
 		log.Fatalf("Tool Call FAILED: %v", res.Content)
 	}
-
-	fmt.Print("Client: Waiting for Response\n\n")
 
 	fmt.Println("Response:")
 	for _, c := range res.Content {

@@ -26,9 +26,11 @@ import (
 )
 
 const (
-	url           = "http://localhost:11434/v1/chat/completions"
-	model         = "gpt-oss:latest"
-	contextWindow = 168 * 1024 // 168K tokens
+	url             = "http://localhost:11434/v1/chat/completions"
+	model           = "gpt-oss:latest"
+	maxInputTokens  = 1024 * 8
+	maxOutputTokens = 1024 * 16
+	contextWindow   = maxInputTokens + maxOutputTokens
 )
 
 func main() {
@@ -54,7 +56,7 @@ func run() error {
 		log.Println(s)
 	}
 
-	cln := client.NewSSE[client.Chat](logger)
+	cln := client.NewSSE[client.ChatSSE](logger)
 
 	agent := NewAgent(cln, getUserMessage)
 
@@ -77,7 +79,7 @@ type Tool interface {
 
 // Agent represents the chat agent that can use tools to perform tasks.
 type Agent struct {
-	client         *client.SSEClient[client.Chat]
+	client         *client.SSEClient[client.ChatSSE]
 	getUserMessage func() (string, bool)
 
 	// ADDING TOOL SUPPORT TO THE AGENT.
@@ -86,7 +88,7 @@ type Agent struct {
 }
 
 // NewAgent creates a new instance of Agent.
-func NewAgent(sseClient *client.SSEClient[client.Chat], getUserMessage func() (string, bool)) *Agent {
+func NewAgent(sseClient *client.SSEClient[client.ChatSSE], getUserMessage func() (string, bool)) *Agent {
 
 	// CONSTRUCT THE TOOLS ALONG WITH THEIR DOCUMENTS.
 
@@ -129,7 +131,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		d := client.D{
 			"model":       model,
 			"messages":    conversation,
-			"max_tokens":  contextWindow,
+			"max_tokens":  maxOutputTokens,
 			"temperature": 0.0,
 			"top_p":       0.1,
 			"top_k":       1,
@@ -143,7 +145,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
 
-		ch := make(chan client.Chat, 100)
+		ch := make(chan client.ChatSSE, 100)
 		ctx, cancelContext := context.WithTimeout(ctx, time.Minute*5)
 
 		if err := a.client.Do(ctx, http.MethodPost, url, d, ch); err != nil {

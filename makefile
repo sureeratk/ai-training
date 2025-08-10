@@ -81,6 +81,9 @@ example11-step1:
 example11-step2:
 	go run cmd/examples/example11/step2/main.go
 
+example11-step3:
+	go run cmd/examples/example11/step3/main.go cmd/examples/example11/step3/mcp_server.go
+	
 # ==============================================================================
 # Install dependencies
 

@@ -44,7 +44,11 @@ func run(host string, port string) error {
 
 	fmt.Println("\nTesting MCP Client coded against the MCP Server")
 
-	if err := client(host, port); err != nil {
+	if err := client(host, port, "list_files", map[string]any{"filter": "*.go"}); err != nil {
+		return err
+	}
+
+	if err := client(host, port, "read_files", map[string]any{"path": "file1.txt"}); err != nil {
 		return err
 	}
 
@@ -95,12 +99,40 @@ func ListFiles(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolP
 	}, nil
 }
 
+type ReadFilesParams struct {
+	Path string `json:"path" jsonschema:"the path to the file to read"`
+}
+
+func ReadFiles(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadFilesParams]) (*mcp.CallToolResultFor[any], error) {
+	data := struct {
+		Status  string `json:"status"`
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}{
+		Status:  "SUCCESS",
+		Path:    params.Arguments.Path,
+		Content: "Hello World",
+	}
+
+	d, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{
+			Text: string(d),
+		}},
+	}, nil
+}
+
 // =============================================================================
 // Basic server implementation
 
 func server(host string, port string) {
-	fileLister := mcp.NewServer(&mcp.Implementation{Name: "file_lister", Version: "v1.0.0"}, nil)
-	mcp.AddTool(fileLister, &mcp.Tool{Name: "list_files", Description: "lists files"}, ListFiles)
+	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file operations", Version: "v1.0.0"}, nil)
+	mcp.AddTool(fileOperations, &mcp.Tool{Name: "list_files", Description: "lists files"}, ListFiles)
+	mcp.AddTool(fileOperations, &mcp.Tool{Name: "read_files", Description: "reads a file"}, ReadFiles)
 
 	// -------------------------------------------------------------------------
 
@@ -115,7 +147,10 @@ func server(host string, port string) {
 
 		switch url {
 		case "/list_files":
-			return fileLister
+			return fileOperations
+
+		case "/read_files":
+			return fileOperations
 
 		default:
 			return mcp.NewServer(&mcp.Implementation{Name: "unknown_tool", Version: "v1.0.0"}, nil)
@@ -129,10 +164,10 @@ func server(host string, port string) {
 // =============================================================================
 // Basic client code
 
-func client(host string, port string) error {
+func client(host string, port string, tool string, arguments map[string]any) error {
 	ctx := context.Background()
 
-	addr := fmt.Sprintf("http://%s:%s/list_files", host, port)
+	addr := fmt.Sprintf("http://%s:%s/%s", host, port, tool)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
 
@@ -147,11 +182,11 @@ func client(host string, port string) error {
 	defer session.Close()
 
 	params := &mcp.CallToolParams{
-		Name:      "list_files",
-		Arguments: map[string]any{"filter": "*.go"},
+		Name:      tool,
+		Arguments: arguments,
 	}
 
-	fmt.Printf("\nClient: Calling Tool: %s(%v)\n", params.Name, params.Arguments)
+	fmt.Printf("\nClient: Calling Tool: %s(%v)\n\n", params.Name, params.Arguments)
 
 	res, err := session.CallTool(ctx, params)
 	if err != nil {
@@ -161,8 +196,6 @@ func client(host string, port string) error {
 	if res.IsError {
 		return fmt.Errorf("tool call failed: %s", res.Content)
 	}
-
-	fmt.Println("Client: Waiting for Response")
 
 	for _, c := range res.Content {
 		fmt.Print(c.(*mcp.TextContent).Text)
