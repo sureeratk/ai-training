@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,13 +39,28 @@ import (
 )
 
 const (
-	url             = "http://localhost:11434/v1/chat/completions"
-	model           = "gpt-oss:latest"
-	mcpHost         = "localhost:8080"
-	maxInputTokens  = 8192
-	maxOutputTokens = 8192
-	contextWindow   = maxInputTokens + maxOutputTokens
+	url     = "http://localhost:11434/v1/chat/completions"
+	model   = "gpt-oss:latest"
+	mcpHost = "localhost:8080"
 )
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	rounded := float32(contextWindow) / float32(1024)
+	fmt.Printf("\nContext Window: %.0fK\n", rounded)
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -216,14 +232,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		d := client.D{
 			"model":          model,
 			"messages":       conversation,
-			"max_tokens":     maxOutputTokens,
+			"max_tokens":     contextWindow,
 			"temperature":    0.0,
 			"top_p":          0.1,
 			"top_k":          1,
 			"stream":         true,
 			"tools":          a.toolDocuments,
 			"tool_selection": "auto",
-			"options":        client.D{"num_ctx": contextWindow},
 		}
 
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
@@ -382,15 +397,15 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 		reasonTokens := a.tke.TokenCount(r)
 
 		totalTokens := totalInput + reasonTokens
-		percentage := (float64(totalInput) / float64(maxInputTokens)) * 100
-		of := float32(maxInputTokens) / float32(1024)
+		percentage := (float64(totalInput) / float64(contextWindow)) * 100
+		of := float32(contextWindow) / float32(1024)
 
-		fmt.Printf("\u001b[90mTokens Total[%d] Rea[%d] Inp[%d] (%.0f%% of %.0fK Inp tokens)\u001b[0m\n", totalTokens, reasonTokens, totalInput, percentage, of)
+		fmt.Printf("\u001b[90mTokens Total[%d] Rea[%d] Inp[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, totalInput, percentage, of)
 
 		// ---------------------------------------------------------------------
 		// Check if we have too many input tokens and start removing messages.
 
-		if totalInput > maxInputTokens {
+		if totalInput > contextWindow {
 			fmt.Print("\u001b[90mRemoving conversation history\u001b[0m\n")
 			conversation = slices.Delete(conversation, 1, 2)
 			continue

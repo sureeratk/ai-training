@@ -19,6 +19,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,12 +27,24 @@ import (
 )
 
 const (
-	url             = "http://localhost:11434/v1/chat/completions"
-	model           = "gpt-oss:latest"
-	maxInputTokens  = 1024 * 8
-	maxOutputTokens = 1024 * 16
-	contextWindow   = maxInputTokens + maxOutputTokens
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "gpt-oss:latest"
 )
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -104,12 +117,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		d := client.D{
 			"model":       model,
 			"messages":    conversation,
-			"max_tokens":  maxOutputTokens,
+			"max_tokens":  contextWindow,
 			"temperature": 0.0,
 			"top_p":       0.1,
 			"top_k":       1,
 			"stream":      true,
-			"options":     client.D{"num_ctx": contextWindow},
 		}
 
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)

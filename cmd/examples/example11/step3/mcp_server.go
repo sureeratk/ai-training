@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -70,17 +69,11 @@ func ReadFileTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTo
 		return nil, err
 	}
 
-	v := string(content)
-	words := strings.Fields(v)
-	if len(words) > maxWords {
-		words = words[:maxWords]
-	}
-
 	info := struct {
 		Data map[string]any `json:"data"`
 	}{
 		Data: map[string]any{
-			"file_contents": strings.Join(words, " "),
+			"file_contents": string(content),
 		},
 	}
 

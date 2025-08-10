@@ -24,6 +24,8 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 # ==============================================================================
 # Examples
 
+OLLAMA_CONTEXT_LENGTH := 65536
+
 example1:
 	go run cmd/examples/example01/main.go
 
@@ -64,15 +66,19 @@ example9-step5:
 	go run cmd/examples/example09/step5/main.go
 
 example10-step1:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example10/step1/main.go
 
 example10-step2:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example10/step2/main.go
 
 example10-step3:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example10/step3/main.go
 
 example10-step4:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example10/step4/main.go
 
 example11-step1:
@@ -82,8 +88,9 @@ example11-step2:
 	go run cmd/examples/example11/step2/main.go
 
 example11-step3:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example11/step3/main.go cmd/examples/example11/step3/mcp_client.go cmd/examples/example11/step3/mcp_server.go
-	
+
 # ==============================================================================
 # Install dependencies
 
@@ -124,7 +131,7 @@ compose-logs:
 # Ollama tooling
 
 ollama-up:
-	ollama serve
+	OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) ollama serve
 
 ollama-logs:
 	tail -f -n 100 ~/.ollama/logs/server.log
