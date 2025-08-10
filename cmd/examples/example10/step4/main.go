@@ -366,24 +366,24 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 	fmt.Print("\n")
 
 	for {
-		var totalInput int
+		var currentWindow int
 		for _, c := range conversation {
-			totalInput += a.tke.TokenCount(c["content"].(string))
+			currentWindow += a.tke.TokenCount(c["content"].(string))
 		}
 
 		r := strings.Join(reasoning, "")
 		reasonTokens := a.tke.TokenCount(r)
 
-		totalTokens := totalInput + reasonTokens
-		percentage := (float64(totalInput) / float64(contextWindow)) * 100
+		totalTokens := currentWindow + reasonTokens
+		percentage := (float64(currentWindow) / float64(contextWindow)) * 100
 		of := float32(contextWindow) / float32(1024)
 
-		fmt.Printf("\u001b[90mTokens Total[%d] Rea[%d] Inp[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, totalInput, percentage, of)
+		fmt.Printf("\u001b[90mTokens Total[%d] Reason[%d] Window[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, currentWindow, percentage, of)
 
 		// ---------------------------------------------------------------------
 		// Check if we have too many input tokens and start removing messages.
 
-		if totalInput > contextWindow {
+		if currentWindow > contextWindow {
 			fmt.Print("\u001b[90mRemoving conversation history\u001b[0m\n")
 			conversation = slices.Delete(conversation, 1, 2)
 			continue
