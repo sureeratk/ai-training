@@ -8,7 +8,7 @@
 //
 // # This requires running the following command:
 //
-//	$ make compose-up // This starts MongoDB and OpenWebIU in docker compose.
+//	$ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
 //
 // # You can use this command to open a prompt to mongodb:
 //
@@ -120,7 +120,9 @@ func run() error {
 
 func storeDocuments(ctx context.Context, col *mongo.Collection) error {
 
+	// -------------------------------------------------------------------------
 	// If these records already exist, we don't need to add them again.
+
 	findRes, err := col.Find(ctx, bson.D{})
 	if err != nil {
 		return fmt.Errorf("find: %w", err)
@@ -132,8 +134,8 @@ func storeDocuments(ctx context.Context, col *mongo.Collection) error {
 	}
 
 	// -------------------------------------------------------------------------
-
 	// Apply a unique index just to be safe.
+
 	unique := true
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "id", Value: 1}},
@@ -142,7 +144,6 @@ func storeDocuments(ctx context.Context, col *mongo.Collection) error {
 	col.Indexes().CreateOne(ctx, indexModel)
 
 	// -------------------------------------------------------------------------
-
 	// Let's add two documents to the database.
 
 	d1 := document{
@@ -168,6 +169,10 @@ func storeDocuments(ctx context.Context, col *mongo.Collection) error {
 }
 
 func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, limit int) ([]searchResult, error) {
+
+	// -------------------------------------------------------------------------
+	// Example MongoDB query
+
 	/*
 		db.book.aggregate([
 			{
@@ -192,7 +197,9 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, 
 		])
 	*/
 
+	// -------------------------------------------------------------------------
 	// We want to find the nearest neighbors from the specified vector.
+
 	pipeline := mongo.Pipeline{
 		{{
 			Key: "$vectorSearch",

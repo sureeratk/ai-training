@@ -17,6 +17,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -370,21 +371,20 @@ func setupDatabase(ctx context.Context, client *mongo.Client) (*mongo.Collection
 }
 
 func storeDocument(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
-	// If these records already exist, we don't need to add them again.
-	findRes, err := col.Find(ctx, bson.D{
-		{Key: "file_name", Value: fileName},
-	})
-	if err != nil {
-		return fmt.Errorf("find: %w", err)
-	}
-	defer findRes.Close(ctx)
 
-	if findRes.RemainingBatchLength() != 0 {
+	// -------------------------------------------------------------------------
+	// If this record already exist, we don't need to add it again.
+
+	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
+	switch {
+	case findRes.Err() == nil:
+		fmt.Println("Document already exists")
 		return nil
+	case !errors.Is(findRes.Err(), mongo.ErrNoDocuments):
+		return fmt.Errorf("findOne: %w", findRes.Err())
 	}
 
 	// -------------------------------------------------------------------------
-
 	// Let's add the document to the database.
 
 	d1 := document{

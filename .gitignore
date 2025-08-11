@@ -10,6 +10,7 @@
 *.dll
 *.so
 
+cmd/notes/*
 cmd/samples/gallery
 zarf/data/book.embeddings
 zarf/data/example3.*
