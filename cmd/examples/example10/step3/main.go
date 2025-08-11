@@ -72,7 +72,7 @@ func run() error {
 
 // Tool defines the interface that all tools must implement.
 type Tool interface {
-	Call(ctx context.Context, arguments map[string]any) client.D
+	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }
 
 // =============================================================================
@@ -231,7 +231,7 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []cl
 
 		fmt.Printf("\n\n\u001b[92mtool\u001b[0m: %s(%v)\n", toolCall.Function.Name, toolCall.Function.Arguments)
 
-		resp := tool.Call(ctx, toolCall.Function.Arguments)
+		resp := tool.Call(ctx, toolCall)
 		resps = append(resps, resp)
 
 		fmt.Printf("%#v\n", resps)
@@ -286,14 +286,14 @@ func (gw *GetWeather) toolDocument() client.D {
 
 // Call is the function that is called by the agent to get the weather when the
 // model requests the tool with the specified parameters.
-func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (gw *GetWeather) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
 			resp = client.D{
-				"role":    "tool",
-				"name":    gw.name,
-				"status":  "FAILED",
-				"content": fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, r),
+				"role":         "tool",
+				"tool_call_id": toolCall.ID,
+				"tool_name":    gw.name,
+				"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, r),
 			}
 		}
 	}()
@@ -302,7 +302,7 @@ func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp 
 	// We are going to return the current weather as structured data using JSON
 	// which is easier for the model to interpret.
 
-	location := arguments["location"].(string)
+	location := toolCall.Function.Arguments["location"].(string)
 
 	data := map[string]any{
 		"temperature": 28,
@@ -322,15 +322,17 @@ func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp 
 	d, err := json.Marshal(info)
 	if err != nil {
 		return client.D{
-			"role":    "tool",
-			"name":    gw.name,
-			"content": fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
+			"role":         "tool",
+			"tool_call_id": toolCall.ID,
+			"tool_name":    gw.name,
+			"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
 		}
 	}
 
 	return client.D{
-		"role":    "tool",
-		"name":    gw.name,
-		"content": string(d),
+		"role":         "tool",
+		"tool_call_id": toolCall.ID,
+		"tool_name":    gw.name,
+		"content":      string(d),
 	}
 }

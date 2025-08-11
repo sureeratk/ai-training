@@ -118,7 +118,7 @@ func weatherQuestion(ctx context.Context) error {
 				"content": fmt.Sprintf("Tool call: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 			})
 
-			resp := getWeather.Call(ctx, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+			resp := getWeather.Call(ctx, resp.Choices[0].Delta.ToolCalls[0])
 			conversation = append(conversation, resp)
 
 			fmt.Printf("Tool Call Result:\n\n%s\n\n", resp)
@@ -205,13 +205,14 @@ func (gw *GetWeather) ToolDocument() client.D {
 
 // Call is the function that is called by the agent to get the weather when the
 // model requests the tool with the specified parameters.
-func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (gw *GetWeather) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
 			resp = client.D{
-				"role":    "tool",
-				"name":    gw.name,
-				"content": fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, r),
+				"role":         "tool",
+				"tool_call_id": toolCall.ID,
+				"tool_name":    gw.name,
+				"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, r),
 			}
 		}
 	}()
@@ -220,7 +221,7 @@ func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp 
 	// We are going to return the current weather as structured data using JSON
 	// which is easier for the model to interpret.
 
-	location := arguments["location"].(string)
+	location := toolCall.Function.Arguments["location"].(string)
 
 	data := map[string]any{
 		"temperature": 28,
@@ -240,15 +241,17 @@ func (gw *GetWeather) Call(ctx context.Context, arguments map[string]any) (resp 
 	d, err := json.Marshal(info)
 	if err != nil {
 		return client.D{
-			"role":    "tool",
-			"name":    gw.name,
-			"content": fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
+			"role":         "tool",
+			"tool_call_id": toolCall.ID,
+			"tool_name":    gw.name,
+			"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
 		}
 	}
 
 	return client.D{
-		"role":    "tool",
-		"name":    gw.name,
-		"content": string(d),
+		"role":         "tool",
+		"tool_call_id": toolCall.ID,
+		"tool_name":    gw.name,
+		"content":      string(d),
 	}
 }

@@ -46,15 +46,15 @@ func run(host string, port string) error {
 
 	fmt.Println("\nTesting MCP Client coded against the MCP Server")
 
-	if err := client(host, port, "list_files", map[string]any{"filter": "*.go"}); err != nil {
+	if err := client(host, port, "tool_list_files", map[string]any{"filter": "*.go"}); err != nil {
 		return err
 	}
 
-	if err := client(host, port, "read_files", map[string]any{"path": "file1.txt"}); err != nil {
+	if err := client(host, port, "tool_read_files", map[string]any{"path": "file1.txt"}); err != nil {
 		return err
 	}
 
-	if err := client(host, port, "shell_command", map[string]any{"command": []string{"find", ".", "-name", "*.go", "-not", "-path", "./vendor/*"}}); err != nil {
+	if err := client(host, port, "tool_shell_command", map[string]any{"command": []string{"find", ".", "-name", "*.go", "-not", "-path", "./vendor/*"}}); err != nil {
 		return err
 	}
 
@@ -176,9 +176,9 @@ func ShellCommand(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTo
 
 func mcpListenAndServe(host string, port string) {
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file operations", Version: "v1.0.0"}, nil)
-	mcp.AddTool(fileOperations, &mcp.Tool{Name: "list_files", Description: "lists files"}, ListFiles)
-	mcp.AddTool(fileOperations, &mcp.Tool{Name: "read_files", Description: "reads a file"}, ReadFiles)
-	mcp.AddTool(fileOperations, &mcp.Tool{Name: "shell_command", Description: "runs a shell command"}, ShellCommand)
+	mcp.AddTool(fileOperations, &mcp.Tool{Name: "tool_list_files", Description: "lists files"}, ListFiles)
+	mcp.AddTool(fileOperations, &mcp.Tool{Name: "tool_read_files", Description: "reads a file"}, ReadFiles)
+	mcp.AddTool(fileOperations, &mcp.Tool{Name: "tool_shell_command", Description: "runs a shell command"}, ShellCommand)
 
 	// -------------------------------------------------------------------------
 
@@ -192,13 +192,13 @@ func mcpListenAndServe(host string, port string) {
 		log.Printf("Server: Handling request for URL %s\n", url)
 
 		switch url {
-		case "/list_files":
+		case "/tool_list_files":
 			return fileOperations
 
-		case "/read_files":
+		case "/tool_read_files":
 			return fileOperations
 
-		case "/shell_command":
+		case "/tool_shell_command":
 			return fileOperations
 
 		default:

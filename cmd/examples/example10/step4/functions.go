@@ -59,24 +59,24 @@ func (rf *ReadFile) toolDocument() client.D {
 
 // Call is the function that is called by the agent to read the contents of a
 // file when the model requests the tool with the specified parameters.
-func (rf *ReadFile) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (rf *ReadFile) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(rf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(toolCall.ID, rf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	dir := "."
-	if arguments["path"] != "" {
-		dir = arguments["path"].(string)
+	if toolCall.Function.Arguments["path"] != "" {
+		dir = toolCall.Function.Arguments["path"].(string)
 	}
 
 	content, err := os.ReadFile(dir)
 	if err != nil {
-		return toolErrorResponse(rf.name, err)
+		return toolErrorResponse(toolCall.ID, rf.name, err)
 	}
 
-	return toolSuccessResponse(rf.name, "file_contents", string(content))
+	return toolSuccessResponse(toolCall.ID, rf.name, "file_contents", string(content))
 }
 
 // =============================================================================
@@ -129,25 +129,25 @@ func (sf *SearchFiles) toolDocument() client.D {
 
 // Call is the function that is called by the agent to list files when the model
 // requests the tool with the specified parameters.
-func (sf *SearchFiles) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (sf *SearchFiles) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(sf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(toolCall.ID, sf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	dir := "."
-	if v, exists := arguments["path"]; exists && v != "" {
+	if v, exists := toolCall.Function.Arguments["path"]; exists && v != "" {
 		dir = v.(string)
 	}
 
 	filter := ""
-	if v, exists := arguments["filter"]; exists {
+	if v, exists := toolCall.Function.Arguments["filter"]; exists {
 		filter = v.(string)
 	}
 
 	contains := ""
-	if v, exists := arguments["contains"]; exists {
+	if v, exists := toolCall.Function.Arguments["contains"]; exists {
 		contains = v.(string)
 	}
 
@@ -211,10 +211,10 @@ func (sf *SearchFiles) Call(ctx context.Context, arguments map[string]any) (resp
 	})
 
 	if err != nil {
-		return toolErrorResponse(sf.name, err)
+		return toolErrorResponse(toolCall.ID, sf.name, err)
 	}
 
-	return toolSuccessResponse(sf.name, "files", files)
+	return toolSuccessResponse(toolCall.ID, sf.name, "files", files)
 }
 
 // =============================================================================
@@ -259,17 +259,17 @@ func (cf *CreateFile) toolDocument() client.D {
 
 // Call is the function that is called by the agent to create a file when the model
 // requests the tool with the specified parameters.
-func (cf *CreateFile) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (cf *CreateFile) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(cf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(toolCall.ID, cf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
-	filePath := arguments["path"].(string)
+	filePath := toolCall.Function.Arguments["path"].(string)
 
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		return toolErrorResponse(cf.name, errors.New("file already exists"))
+		return toolErrorResponse(toolCall.ID, cf.name, errors.New("file already exists"))
 	}
 
 	dir := path.Dir(filePath)
@@ -279,11 +279,11 @@ func (cf *CreateFile) Call(ctx context.Context, arguments map[string]any) (resp 
 
 	f, err := os.Create(filePath)
 	if err != nil {
-		return toolErrorResponse(cf.name, err)
+		return toolErrorResponse(toolCall.ID, cf.name, err)
 	}
 	f.Close()
 
-	return toolSuccessResponse(cf.name, "status", "SUCCESS")
+	return toolSuccessResponse(toolCall.ID, cf.name, "status", "SUCCESS")
 }
 
 // =============================================================================
@@ -340,28 +340,28 @@ func (gce *GoCodeEditor) toolDocument() client.D {
 
 // Call is the function that is called by the agent to edit a file when the model
 // requests the tool with the specified parameters.
-func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (gce *GoCodeEditor) Call(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(gce.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(toolCall.ID, gce.name, fmt.Errorf("%s", r))
 		}
 	}()
 
-	path := arguments["path"].(string)
-	lineNumber := int(arguments["line_number"].(float64))
-	typeChange := strings.TrimSpace(arguments["type_change"].(string))
-	lineChange := strings.TrimSpace(arguments["line_change"].(string))
+	path := toolCall.Function.Arguments["path"].(string)
+	lineNumber := int(toolCall.Function.Arguments["line_number"].(float64))
+	typeChange := strings.TrimSpace(toolCall.Function.Arguments["type_change"].(string))
+	lineChange := strings.TrimSpace(toolCall.Function.Arguments["line_change"].(string))
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return toolErrorResponse(gce.name, err)
+		return toolErrorResponse(toolCall.ID, gce.name, err)
 	}
 
 	fset := token.NewFileSet()
 	lines := strings.Split(string(content), "\n")
 
 	if lineNumber < 1 || lineNumber > len(lines) {
-		return toolErrorResponse(gce.name, fmt.Errorf("line number %d is out of range (1-%d)", lineNumber, len(lines)))
+		return toolErrorResponse(toolCall.ID, gce.name, fmt.Errorf("line number %d is out of range (1-%d)", lineNumber, len(lines)))
 	}
 
 	switch typeChange {
@@ -383,14 +383,14 @@ func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (re
 		}
 
 	default:
-		return toolErrorResponse(gce.name, fmt.Errorf("unsupported change type: %s, please inform the user", typeChange))
+		return toolErrorResponse(toolCall.ID, gce.name, fmt.Errorf("unsupported change type: %s, please inform the user", typeChange))
 	}
 
 	modifiedContent := strings.Join(lines, "\n")
 
 	_, err = parser.ParseFile(fset, path, modifiedContent, parser.ParseComments)
 	if err != nil {
-		return toolErrorResponse(gce.name, fmt.Errorf("syntax error after modification: %s, please inform the user", err))
+		return toolErrorResponse(toolCall.ID, gce.name, fmt.Errorf("syntax error after modification: %s, please inform the user", err))
 	}
 
 	formattedContent, err := format.Source([]byte(modifiedContent))
@@ -400,7 +400,7 @@ func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (re
 
 	err = os.WriteFile(path, formattedContent, 0644)
 	if err != nil {
-		return toolErrorResponse(gce.name, fmt.Errorf("write file: %s", err))
+		return toolErrorResponse(toolCall.ID, gce.name, fmt.Errorf("write file: %s", err))
 	}
 
 	var action string
@@ -413,5 +413,5 @@ func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (re
 		action = fmt.Sprintf("Deleted line %d", lineNumber)
 	}
 
-	return toolSuccessResponse(gce.name, "message", action)
+	return toolSuccessResponse(toolCall.ID, gce.name, "message", action)
 }

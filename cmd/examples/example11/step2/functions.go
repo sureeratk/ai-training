@@ -99,21 +99,21 @@ func (rf *ReadFile) toolDocument() client.D {
 
 // Call is the function that is called by the agent to read the contents of a
 // file when the model requests the tool with the specified parameters.
-func (rf *ReadFile) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (rf *ReadFile) Call(ctx context.Context, tool client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(rf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(tool.ID, rf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	params := &mcp.CallToolParams{
 		Name:      rf.name,
-		Arguments: arguments,
+		Arguments: tool.Function.Arguments,
 	}
 
 	results, err := rf.mcpClient.Call(ctx, rf.transport, params)
 	if err != nil {
-		return toolErrorResponse(rf.name, fmt.Errorf("failed to call tool: %w", err))
+		return toolErrorResponse(tool.ID, rf.name, fmt.Errorf("failed to call tool: %w", err))
 	}
 
 	data := results[0].(*mcp.TextContent).Text
@@ -123,10 +123,10 @@ func (rf *ReadFile) Call(ctx context.Context, arguments map[string]any) (resp cl
 	}
 
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
-		return toolErrorResponse(rf.name, err)
+		return toolErrorResponse(tool.ID, rf.name, fmt.Errorf("failed to unmarshal response: %w", err))
 	}
 
-	return toolSuccessResponse(rf.name, "file_contents", info.Contents)
+	return toolSuccessResponse(tool.ID, rf.name, "file_contents", info.Contents)
 }
 
 // =============================================================================
@@ -188,21 +188,21 @@ func (sf *SearchFiles) toolDocument() client.D {
 
 // Call is the function that is called by the agent to list files when the model
 // requests the tool with the specified parameters.
-func (sf *SearchFiles) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (sf *SearchFiles) Call(ctx context.Context, tool client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(sf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(tool.ID, sf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	params := &mcp.CallToolParams{
 		Name:      sf.name,
-		Arguments: arguments,
+		Arguments: tool.Function.Arguments,
 	}
 
 	results, err := sf.mcpClient.Call(ctx, sf.transport, params)
 	if err != nil {
-		return toolErrorResponse(sf.name, fmt.Errorf("failed to call tool: %w", err))
+		return toolErrorResponse(tool.ID, sf.name, fmt.Errorf("failed to call tool: %w", err))
 	}
 
 	data := results[0].(*mcp.TextContent).Text
@@ -212,10 +212,10 @@ func (sf *SearchFiles) Call(ctx context.Context, arguments map[string]any) (resp
 	}
 
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
-		return toolErrorResponse(sf.name, err)
+		return toolErrorResponse(tool.ID, sf.name, fmt.Errorf("failed to unmarshal response: %w", err))
 	}
 
-	return toolSuccessResponse(sf.name, "files", info.Files)
+	return toolSuccessResponse(tool.ID, sf.name, "files", info.Files)
 }
 
 // =============================================================================
@@ -269,21 +269,21 @@ func (cf *CreateFile) toolDocument() client.D {
 
 // Call is the function that is called by the agent to create a file when the model
 // requests the tool with the specified parameters.
-func (cf *CreateFile) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (cf *CreateFile) Call(ctx context.Context, tool client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(cf.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(tool.ID, cf.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	params := &mcp.CallToolParams{
 		Name:      cf.name,
-		Arguments: arguments,
+		Arguments: tool.Function.Arguments,
 	}
 
 	results, err := cf.mcpClient.Call(ctx, cf.transport, params)
 	if err != nil {
-		return toolErrorResponse(cf.name, fmt.Errorf("failed to call tool: %w", err))
+		return toolErrorResponse(tool.ID, cf.name, fmt.Errorf("failed to call tool: %w", err))
 	}
 
 	data := results[0].(*mcp.TextContent).Text
@@ -293,10 +293,10 @@ func (cf *CreateFile) Call(ctx context.Context, arguments map[string]any) (resp 
 	}
 
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
-		return toolErrorResponse(cf.name, err)
+		return toolErrorResponse(tool.ID, cf.name, fmt.Errorf("failed to unmarshal response: %w", err))
 	}
 
-	return toolSuccessResponse(cf.name, "status", info.Status)
+	return toolSuccessResponse(tool.ID, cf.name, "status", info.Status)
 }
 
 // =============================================================================
@@ -362,21 +362,21 @@ func (gce *GoCodeEditor) toolDocument() client.D {
 
 // Call is the function that is called by the agent to edit a file when the model
 // requests the tool with the specified parameters.
-func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (resp client.D) {
+func (gce *GoCodeEditor) Call(ctx context.Context, tool client.ToolCall) (resp client.D) {
 	defer func() {
 		if r := recover(); r != nil {
-			resp = toolErrorResponse(gce.name, fmt.Errorf("%s", r))
+			resp = toolErrorResponse(tool.ID, gce.name, fmt.Errorf("%s", r))
 		}
 	}()
 
 	params := &mcp.CallToolParams{
 		Name:      gce.name,
-		Arguments: arguments,
+		Arguments: tool.Function.Arguments,
 	}
 
 	results, err := gce.mcpClient.Call(ctx, gce.transport, params)
 	if err != nil {
-		return toolErrorResponse(gce.name, fmt.Errorf("failed to call tool: %w", err))
+		return toolErrorResponse(tool.ID, gce.name, fmt.Errorf("failed to call tool: %w", err))
 	}
 
 	data := results[0].(*mcp.TextContent).Text
@@ -386,8 +386,8 @@ func (gce *GoCodeEditor) Call(ctx context.Context, arguments map[string]any) (re
 	}
 
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
-		return toolErrorResponse(gce.name, err)
+		return toolErrorResponse(tool.ID, gce.name, fmt.Errorf("failed to unmarshal response: %w", err))
 	}
 
-	return toolSuccessResponse(gce.name, "message", info.Message)
+	return toolSuccessResponse(tool.ID, gce.name, "message", info.Message)
 }

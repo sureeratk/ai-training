@@ -98,7 +98,7 @@ func run() error {
 
 // Tool defines the interface that all tools must implement.
 type Tool interface {
-	Call(ctx context.Context, arguments map[string]any) client.D
+	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }
 
 // =============================================================================
@@ -271,7 +271,9 @@ func (a *Agent) Run(ctx context.Context) error {
 					"content": fmt.Sprintf("Tool call: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 				})
 
-				result := compareToolCalls(lastToolCall, resp.Choices[0].Delta.ToolCalls)
+				toolID := resp.Choices[0].Delta.ToolCalls[0].ID
+
+				result := compareToolCalls(toolID, lastToolCall, resp.Choices[0].Delta.ToolCalls)
 				if len(result) > 0 {
 					conversation = a.addToConversation(reasonContent, conversation, result)
 					inToolCall = true
@@ -365,7 +367,7 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []cl
 
 		fmt.Printf("\u001b[92mtool: %s(%v)\u001b[0m:\n", toolCall.Function.Name, toolCall.Function.Arguments)
 
-		resp := tool.Call(ctx, toolCall.Function.Arguments)
+		resp := tool.Call(ctx, toolCall)
 		resps = append(resps, resp)
 
 		fmt.Printf("%#v\n", resps)
@@ -418,7 +420,7 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 // compareToolCalls will try and detect if the model is asking us to call the
 // same tool twice. This function is not accurate because the arguments are in a
 // map. We need to fix that.
-func compareToolCalls(last []client.ToolCall, current []client.ToolCall) client.D {
+func compareToolCalls(toolID string, last []client.ToolCall, current []client.ToolCall) client.D {
 	if len(last) != len(current) {
 		return client.D{}
 	}
@@ -436,11 +438,11 @@ func compareToolCalls(last []client.ToolCall, current []client.ToolCall) client.
 	fmt.Printf("\u001b[92mtool\u001b[0m: %s(%v)\n", current[0].Function.Name, current[0].Function.Arguments)
 	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", "Same tool call")
 
-	return toolErrorResponse(current[0].Function.Name, errors.New("data already provided in a previous response, please review the conversation history"))
+	return toolErrorResponse(toolID, current[0].Function.Name, errors.New("data already provided in a previous response, please review the conversation history"))
 }
 
 // toolSuccessResponse returns a successful structured tool response.
-func toolSuccessResponse(toolName string, values ...any) client.D {
+func toolSuccessResponse(toolID string, toolName string, values ...any) client.D {
 	data := make(map[string]any)
 	for i := 0; i < len(values); i = i + 2 {
 		data[values[i].(string)] = values[i+1]
@@ -457,47 +459,47 @@ func toolSuccessResponse(toolName string, values ...any) client.D {
 	json, err := json.Marshal(info)
 	if err != nil {
 		return client.D{
-			"role":    "tool",
-			"name":    "error",
-			"content": `{"status": "FAILED", "data": "error marshaling tool response"}`,
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
 		}
 	}
 
 	return client.D{
-		"role":    "tool",
-		"name":    toolName,
-		"content": string(json),
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(json),
 	}
 }
 
 // toolErrorResponse returns a failed structured tool response.
-func toolErrorResponse(toolName string, err error) client.D {
-	data := map[string]any{"error": err.Error()}
-
+func toolErrorResponse(toolID string, toolName string, err error) client.D {
 	info := struct {
 		Status string         `json:"status"`
 		Data   map[string]any `json:"data"`
 	}{
 		Status: "FAILED",
-		Data:   data,
+		Data: map[string]any{
+			"error": err.Error(),
+		},
 	}
 
 	json, err := json.Marshal(info)
 	if err != nil {
 		return client.D{
-			"role":    "tool",
-			"name":    "error",
-			"content": `{"status": "FAILED", "data": "error marshaling tool response"}`,
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
 		}
 	}
 
-	content := string(json)
-
-	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", content)
-
 	return client.D{
-		"role":    "tool",
-		"name":    toolName,
-		"content": content,
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(json),
 	}
 }

@@ -253,12 +253,12 @@ curl-tooling:
 # This will establish a SSE session and this is where we will get the sessionID
 # and the results of the call.
 curl-mcp-get-session:
-	curl -N -H "Accept: text/event-stream" http://localhost:8080/greet1
+	curl -N -H "Accept: text/event-stream" http://localhost:8080/tool_list_files
 
 # Once we have the sessionID, we can initialize the session.
 # Replace the sessionID with the one you get from the SSE session.
 curl-mcp-init:
-	curl -X POST http://localhost:8080/greet1?sessionid=<SESSIONID> \
+	curl -X POST http://localhost:8080/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \
@@ -274,14 +274,14 @@ curl-mcp-init:
 # Then we can make the actual tool call. The response will be streamed in the
 # session call. Replace the sessionID with the one you get from the SSE session.
 curl-mcp-tool-call:
-	curl -X POST http://localhost:8080/greet1?sessionid=<SESSIONID> \
+	curl -X POST http://localhost:8080/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \
-		"id": 1, \
+		"id": 2, \
 		"method": "tools/call", \
 		"params": { \
-			"name": "greet1", \
-			"arguments": {"name": "you"} \
+			"name": "tool_list_files", \
+			"arguments": {"filter": "list any files that have the name example"} \
 		} \
 	}'
