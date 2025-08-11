@@ -1,5 +1,4 @@
 // https://ampcode.com/how-to-build-an-agent
-// bill was here
 //
 // This example shows you a final example of the coding agent with support
 // to read, list, and edit files.
@@ -8,7 +7,6 @@
 //
 //	$ make example10-step4
 //
-// bill was here
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
