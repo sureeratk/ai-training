@@ -1,7 +1,7 @@
 // https://ampcode.com/how-to-build-an-agent
 //
 // This example shows you a final example of the coding agent with support
-// to read, list, and edit files.
+// to read, list, create, and edit files.
 //
 // # Running the example:
 //

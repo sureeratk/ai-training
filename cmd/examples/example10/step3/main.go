@@ -68,7 +68,7 @@ func run() error {
 
 // =============================================================================
 
-// DEFINE A TOOL INTERFACE TO DEFINE WHAT A TOOL NEEDS TO PROVIDE.
+// DECLARE A TOOL INTERFACE TO DEFINE WHAT A TOOL NEEDS TO PROVIDE.
 
 // Tool describes the features which all tools must implement.
 type Tool interface {
