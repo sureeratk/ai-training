@@ -71,7 +71,7 @@ func weatherQuestion(ctx context.Context) error {
 	// -------------------------------------------------------------------------
 	// Start by asking what the weather is like in New York City
 
-	var getWeather GetWeather
+	getWeather := NewGetWeather()
 
 	q := "What is the weather like in New York City?"
 	fmt.Printf("\nQuestion:\n\n%s\n", q)
