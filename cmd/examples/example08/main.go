@@ -21,13 +21,37 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/sqldb"
 	"github.com/jmoiron/sqlx"
+	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/ollama"
 )
+
+const (
+	url   = "http://localhost:11434"
+	model = "llama3.2-vision"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -115,8 +139,8 @@ func getQuery(ctx context.Context, question string) (string, error) {
 
 	// Open a connection with ollama to access the model.
 	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
 	)
 	if err != nil {
 		return "", fmt.Errorf("ollama: %w", err)
@@ -133,11 +157,9 @@ func getQuery(ctx context.Context, question string) (string, error) {
 }
 
 func getResponse(ctx context.Context, question string, data []map[string]any) (string, error) {
-
-	// Open a connection with ollama to access the model.
 	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
 	)
 	if err != nil {
 		return "", fmt.Errorf("ollama: %w", err)
@@ -154,7 +176,7 @@ func getResponse(ctx context.Context, question string, data []map[string]any) (s
 
 	prompt := fmt.Sprintf(response, builder.String(), question)
 
-	result, err := llm.Call(ctx, prompt)
+	result, err := llm.Call(ctx, prompt, llms.WithMaxTokens(contextWindow))
 	if err != nil {
 		return "", fmt.Errorf("call: %w", err)
 	}

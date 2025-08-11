@@ -27,6 +27,13 @@ import (
 	"github.com/tmc/langchaingo/llms/ollama"
 )
 
+const (
+	url   = "http://localhost:11434"
+	model = "bge-m3:latest"
+)
+
+// =============================================================================
+
 type data struct {
 	Name      string
 	Text      string
@@ -42,8 +49,8 @@ func (d data) Vector() []float32 {
 
 func main() {
 	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
 	)
 	if err != nil {
 		log.Fatal(err)

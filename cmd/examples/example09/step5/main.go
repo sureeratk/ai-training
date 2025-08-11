@@ -1,8 +1,5 @@
-// This example shows you how to use the Llama3.2 vision model to generate
-// an image description and update the image with the description for a whole
-// list of images.
-// It also uses a database to store the image descriptions and vectors.
-// You can search for an image based on its description or parts from the description.
+// This example takes step4 and shows you how to process a set of images
+// from a location on disk.
 //
 // # Running the example:
 //
@@ -23,6 +20,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
@@ -37,6 +35,32 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	url            = "http://localhost:11434"
+	model          = "llama3.2-vision"
+	embedModel     = "bge-m3:latest"
+	dbName         = "example9"
+	collectionName = "images-5"
+	gallaryPath    = "cmd/samples/"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
+
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
@@ -50,6 +74,8 @@ type searchResult struct {
 	Score       float64   `bson:"score" json:"-"`
 }
 
+// =============================================================================
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -60,23 +86,37 @@ func run() error {
 	ctx := context.Background()
 
 	// -------------------------------------------------------------------------
-	// Connect to mongo
+	// Connect to Ollama
 
-	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	llm, err := ollama.New(
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
+	)
 	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
-	}
-	defer client.Disconnect(ctx)
-
-	fmt.Println("Connected to MongoDB")
-
-	dbCollection, err := setupDatabase(ctx, client)
-	if err != nil {
-		return fmt.Errorf("setupDatabase: %w", err)
+		return fmt.Errorf("ollama: %w", err)
 	}
 
-	directoryPath := "cmd/samples/gallery/sample"
-	files, err := getFilesFromDirectory(directoryPath)
+	llmEmbed, err := ollama.New(
+		ollama.WithModel(embedModel),
+		ollama.WithServerURL(url),
+	)
+	if err != nil {
+		return fmt.Errorf("ollama: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Connect to MongoDB
+
+	mongoClient, err := initDatabase(dbName, collectionName)
+	if err != nil {
+		return fmt.Errorf("initDatabase: %w", err)
+	}
+
+	col := mongoClient.Database(dbName).Collection(collectionName)
+
+	// -------------------------------------------------------------------------
+
+	files, err := getFilesFromDirectory(gallaryPath)
 	if err != nil {
 		return fmt.Errorf("get files: %w", err)
 	}
@@ -98,14 +138,6 @@ Encode the list as valid JSON, as in this example:
 ]
 Make sure the JSON is valid, doesn't have any extra spaces, and is properly formatted.
 `
-
-	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
 
 	for _, fileName := range files {
 		data, err := readImage(fileName)
@@ -139,7 +171,11 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 			},
 		}
 
-		cr, err := llm.GenerateContent(ctx, messages)
+		cr, err := llm.GenerateContent(
+			ctx,
+			messages,
+			llms.WithMaxTokens(contextWindow),
+		)
 		if err != nil {
 			return fmt.Errorf("generate content: %w", err)
 		}
@@ -153,16 +189,21 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 			return fmt.Errorf("update image: %w", err)
 		}
 
-		fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
+		// -------------------------------------------------------------------------
 
-		vector, err := generateEmbeddings(cr.Choices[0].Content)
+		fmt.Println("Generate embeddings for the image description")
+
+		vectors, err := llmEmbed.CreateEmbedding(ctx, []string{cr.Choices[0].Content})
 		if err != nil {
-			return fmt.Errorf("generate embeddings: %w", err)
+			return fmt.Errorf("create embedding: %w", err)
 		}
 
-		err = storeDocument(ctx, dbCollection, fileName, cr.Choices[0].Content, vector)
-		if err != nil {
-			return fmt.Errorf("update database: %w", err)
+		// -------------------------------------------------------------------------
+
+		fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
+
+		if err := storeDocument(ctx, col, fileName, cr.Choices[0].Content, vectors[0]); err != nil {
+			return fmt.Errorf("storeDocuments: %w", err)
 		}
 	}
 
@@ -181,19 +222,79 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	// -------------------------------------------------------------------------
 
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
 
-	results, err := vectorSearch(ctx, dbCollection, question)
+	results, err := vectorSearch(ctx, llmEmbed, col, question)
 	if err != nil {
 		return fmt.Errorf("vectorSearch: %w", err)
 	}
 
-	if err := questionResponse(ctx, question, results); err != nil {
+	if err := questionResponse(ctx, llm, question, results); err != nil {
 		return fmt.Errorf("questionResponse: %w", err)
 	}
 
 	return nil
+}
+
+func initDatabase(dbName string, collectionName string) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// -------------------------------------------------------------------------
+	// Connect to mongo
+
+	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return nil, fmt.Errorf("connectToMongo: %w", err)
+	}
+
+	fmt.Println("Connected to MongoDB")
+
+	// -------------------------------------------------------------------------
+	// Create database and collection
+
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, collectionName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
+
+	fmt.Println("Created Collection")
+
+	// -------------------------------------------------------------------------
+	// Create vector index
+
+	const indexName = "vector_index"
+
+	settings := mongodb.VectorIndexSettings{
+		NumDimensions: 1024,
+		Path:          "embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	}
+
+	fmt.Println("Created Vector Index")
+
+	// -------------------------------------------------------------------------
+	// Apply a unique index just to be safe.
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "file_name", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
+		return nil, fmt.Errorf("createUniqueIndex: %w", err)
+	}
+
+	fmt.Println("Created Unique file_name Index")
+
+	return client, nil
 }
 
 func getFilesFromDirectory(directoryPath string) ([]string, error) {
@@ -300,75 +401,6 @@ func updateImage(fileName string, description string) error {
 	return nil
 }
 
-func generateEmbeddings(description string) ([]float32, error) {
-	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	vectors, err := llm.CreateEmbedding(context.Background(), []string{description})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Received embeddings from model")
-
-	return vectors[0], nil
-}
-
-func setupDatabase(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
-	// -------------------------------------------------------------------------
-	// Create database and collection
-
-	const dbName = "example9"
-	const collectionName = "images"
-
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, collectionName)
-	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
-	}
-
-	fmt.Println("Created Collection")
-
-	// -------------------------------------------------------------------------
-	// Create vector index
-
-	const indexName = "vector_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: 1024,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
-	}
-
-	fmt.Println("Created Vector Index")
-
-	// -------------------------------------------------------------------------
-	// Apply a unique index just to be safe.
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "file_name", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
-		return nil, fmt.Errorf("createUniqueIndex: %w", err)
-	}
-
-	fmt.Println("Created Unique file_name Index")
-
-	return col, nil
-}
-
 func storeDocument(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
 
 	// -------------------------------------------------------------------------
@@ -402,22 +434,12 @@ func storeDocument(ctx context.Context, col *mongo.Collection, fileName string, 
 	return nil
 }
 
-func vectorSearch(ctx context.Context, col *mongo.Collection, question string) ([]searchResult, error) {
+func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
 
 	// -------------------------------------------------------------------------
-	// Use ollama to generate a vector embedding for the question.
+	// Generate a vector for the question.
 
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
-	}
-
-	// Get the vector embedding for the question.
-	embedding, err := llm.CreateEmbedding(context.Background(), []string{question})
+	vectors, err := llm.CreateEmbedding(ctx, []string{question})
 	if err != nil {
 		return nil, fmt.Errorf("create embedding: %w", err)
 	}
@@ -433,7 +455,7 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, question string) (
 				"index":         "vector_index",
 				"exact":         false,
 				"path":          "embedding",
-				"queryVector":   embedding[0],
+				"queryVector":   vectors[0],
 				"numCandidates": 5,
 				"limit":         5,
 			}},
@@ -471,19 +493,7 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, question string) (
 	return results, nil
 }
 
-func questionResponse(ctx context.Context, question string, results []searchResult) error {
-
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
-
-	// Format a prompt to direct the model what to do with the content and
-	// the question.
+func questionResponse(ctx context.Context, llm *ollama.LLM, question string, results []searchResult) error {
 	prompt := `
 Use the following pieces of information to answer the user's question.
 	
@@ -534,7 +544,13 @@ Question: %s
 	}
 
 	// Send the prompt to the model server.
-	if _, err := llm.Call(ctx, finalPrompt, llms.WithStreamingFunc(f)); err != nil {
+	_, err = llm.Call(
+		ctx,
+		finalPrompt,
+		llms.WithStreamingFunc(f),
+		llms.WithMaxTokens(contextWindow),
+	)
+	if err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
 

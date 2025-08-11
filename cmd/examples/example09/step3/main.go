@@ -1,7 +1,5 @@
-// This example shows you how to use the Llama3.2 vision model to generate
-// an image description and update the image with the description.
-// After generating the embeddings, we'll store the image path and its embeddings
-// into a database so we can later search for it.
+// This example takes step2 and shows you how to store the image path and its
+// vector embedding into a vector database.
 //
 // # Running the example:
 //
@@ -21,6 +19,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
@@ -35,11 +34,38 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	url            = "http://localhost:11434"
+	model          = "llama3.2-vision"
+	embedModel     = "bge-m3:latest"
+	dbName         = "example9"
+	collectionName = "images-3"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
+
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
 	Embedding   []float32 `bson:"embedding"`
 }
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -48,6 +74,39 @@ func main() {
 }
 
 func run() error {
+	ctx := context.Background()
+
+	// -------------------------------------------------------------------------
+	// Connect to Ollama
+
+	llm, err := ollama.New(
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
+	)
+	if err != nil {
+		return fmt.Errorf("ollama: %w", err)
+	}
+
+	llmEmbed, err := ollama.New(
+		ollama.WithModel(embedModel),
+		ollama.WithServerURL(url),
+	)
+	if err != nil {
+		return fmt.Errorf("ollama: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Connect to MongoDB
+
+	mongoClient, err := initDatabase(dbName, collectionName)
+	if err != nil {
+		return fmt.Errorf("initDatabase: %w", err)
+	}
+
+	col := mongoClient.Database(dbName).Collection(collectionName)
+
+	// -------------------------------------------------------------------------
+
 	fileName := "cmd/samples/roseimg.png"
 
 	data, err := readImage(fileName)
@@ -87,14 +146,6 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	fmt.Println("Generating image description...")
 
-	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
-
 	messages := []llms.MessageContent{
 		{
 			Role: llms.ChatMessageTypeHuman,
@@ -110,7 +161,11 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 		},
 	}
 
-	cr, err := llm.GenerateContent(context.Background(), messages)
+	cr, err := llm.GenerateContent(
+		ctx,
+		messages,
+		llms.WithMaxTokens(contextWindow),
+	)
 	if err != nil {
 		return fmt.Errorf("generate content: %w", err)
 	}
@@ -124,14 +179,84 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 		return fmt.Errorf("update image: %w", err)
 	}
 
-	fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
+	// -------------------------------------------------------------------------
 
-	vector, err := generateEmbeddings(cr.Choices[0].Content)
+	fmt.Println("Generate embeddings for the image description")
+
+	vectors, err := llmEmbed.CreateEmbedding(ctx, []string{cr.Choices[0].Content})
 	if err != nil {
-		return fmt.Errorf("generate embeddings: %w", err)
+		return fmt.Errorf("create embedding: %w", err)
 	}
 
-	return updateDatabase(fileName, cr.Choices[0].Content, vector)
+	// -------------------------------------------------------------------------
+
+	fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
+
+	if err := storeDocument(ctx, col, fileName, cr.Choices[0].Content, vectors[0]); err != nil {
+		return fmt.Errorf("storeDocument: %w", err)
+	}
+
+	return nil
+}
+
+func initDatabase(dbName string, collectionName string) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// -------------------------------------------------------------------------
+	// Connect to mongo
+
+	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return nil, fmt.Errorf("connectToMongo: %w", err)
+	}
+
+	fmt.Println("Connected to MongoDB")
+
+	// -------------------------------------------------------------------------
+	// Create database and collection
+
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, collectionName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
+
+	fmt.Println("Created Collection")
+
+	// -------------------------------------------------------------------------
+	// Create vector index
+
+	const indexName = "vector_index"
+
+	settings := mongodb.VectorIndexSettings{
+		NumDimensions: 1024,
+		Path:          "embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	}
+
+	fmt.Println("Created Vector Index")
+
+	// -------------------------------------------------------------------------
+	// Apply a unique index just to be safe.
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "file_name", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
+		return nil, fmt.Errorf("createUniqueIndex: %w", err)
+	}
+
+	fmt.Println("Created Unique file_name Index")
+
+	return client, nil
 }
 
 func readImage(fileName string) ([]byte, error) {
@@ -219,97 +344,7 @@ func updateImage(fileName string, description string) error {
 	return nil
 }
 
-func generateEmbeddings(description string) ([]float32, error) {
-	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	vectors, err := llm.CreateEmbedding(context.Background(), []string{description})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Received embeddings from model")
-
-	return vectors[0], nil
-}
-
-func updateDatabase(fileName string, description string, vector []float32) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// -------------------------------------------------------------------------
-	// Connect to mongo
-
-	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
-	}
-	defer client.Disconnect(ctx)
-
-	fmt.Println("Connected to MongoDB")
-
-	// -------------------------------------------------------------------------
-	// Create database and collection
-
-	const dbName = "example9"
-	const collectionName = "images"
-
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, collectionName)
-	if err != nil {
-		return fmt.Errorf("createCollection: %w", err)
-	}
-
-	fmt.Println("Created Collection")
-
-	// -------------------------------------------------------------------------
-	// Create vector index
-
-	const indexName = "vector_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: 1024,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return fmt.Errorf("createVectorIndex: %w", err)
-	}
-
-	fmt.Println("Created Vector Index")
-
-	// -------------------------------------------------------------------------
-	// Apply a unique index just to be safe.
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "file_name", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
-		return fmt.Errorf("createUniqueIndex: %w", err)
-	}
-
-	fmt.Println("Created Unique file_name Index")
-
-	// -------------------------------------------------------------------------
-	// Store some documents with their embeddings.
-
-	if err := storeDocuments(ctx, col, fileName, description, vector); err != nil {
-		return fmt.Errorf("storeDocuments: %w", err)
-	}
-
-	return nil
-}
-
-func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
+func storeDocument(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
 
 	// -------------------------------------------------------------------------
 	// If this record already exist, we don't need to add it again.

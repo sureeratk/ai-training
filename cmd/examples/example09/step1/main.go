@@ -1,4 +1,4 @@
-// This example shows you how to use the Llama3.2 vision model to generate
+// This example shows you how to use a vision model to generate
 // an image description and update the image with the description.
 //
 // # Running the example:
@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/dsoprea/go-exif/v3"
 	exifcommon "github.com/dsoprea/go-exif/v3/common"
@@ -26,6 +27,28 @@ import (
 	"github.com/tmc/langchaingo/llms/ollama"
 )
 
+const (
+	url   = "http://localhost:11434"
+	model = "llama3.2-vision"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -33,6 +56,21 @@ func main() {
 }
 
 func run() error {
+	ctx := context.Background()
+
+	// -------------------------------------------------------------------------
+	// Connect to Ollama
+
+	llm, err := ollama.New(
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
+	)
+	if err != nil {
+		return fmt.Errorf("ollama: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+
 	fileName := "cmd/samples/roseimg.png"
 
 	data, err := readImage(fileName)
@@ -72,14 +110,6 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	fmt.Println("Generating image description...")
 
-	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
-
 	messages := []llms.MessageContent{
 		{
 			Role: llms.ChatMessageTypeHuman,
@@ -95,7 +125,11 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 		},
 	}
 
-	cr, err := llm.GenerateContent(context.Background(), messages)
+	cr, err := llm.GenerateContent(
+		ctx,
+		messages,
+		llms.WithMaxTokens(contextWindow),
+	)
 	if err != nil {
 		return fmt.Errorf("generate content: %w", err)
 	}

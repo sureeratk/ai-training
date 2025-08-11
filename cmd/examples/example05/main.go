@@ -15,11 +15,35 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/ollama"
 )
+
+const (
+	url   = "http://localhost:11434"
+	model = "llama3.2-vision"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -42,8 +66,8 @@ func questionResponse(ctx context.Context) error {
 
 	// Open a connection with ollama to access the model.
 	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
-		ollama.WithServerURL("http://localhost:11434"),
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
 	)
 	if err != nil {
 		return fmt.Errorf("ollama: %w", err)
@@ -101,7 +125,13 @@ func questionResponse(ctx context.Context) error {
 	}
 
 	// Send the prompt to the model server.
-	if _, err := llm.Call(ctx, finalPrompt, llms.WithStreamingFunc(f)); err != nil {
+	_, err = llm.Call(
+		ctx,
+		finalPrompt,
+		llms.WithStreamingFunc(f),
+		llms.WithMaxTokens(contextWindow),
+	)
+	if err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
 

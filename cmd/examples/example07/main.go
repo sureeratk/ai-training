@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,28 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+const (
+	url   = "http://localhost:11434"
+	model = "bge-m3:latest"
+)
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
+
+func init() {
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// =============================================================================
 
 type searchResult struct {
 	ID        int       `bson:"id"`
@@ -79,8 +102,8 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 
 	// Open a connection with ollama to access the model.
 	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
+		ollama.WithModel(model),
+		ollama.WithServerURL(url),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
@@ -210,7 +233,12 @@ Question: %s
 	}
 
 	// Send the prompt to the model server.
-	if _, err := llm.Call(ctx, finalPrompt, llms.WithStreamingFunc(f)); err != nil {
+	_, err = llm.Call(
+		ctx,
+		finalPrompt,
+		llms.WithStreamingFunc(f),
+		llms.WithMaxTokens(contextWindow))
+	if err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
 

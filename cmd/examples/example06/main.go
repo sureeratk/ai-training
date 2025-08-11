@@ -44,11 +44,20 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	url   = "http://localhost:11434"
+	model = "bge-m3:latest"
+)
+
+// =============================================================================
+
 type document struct {
 	ID        int       `bson:"id"`
 	Text      string    `bson:"text"`
 	Embedding []float32 `bson:"embedding"`
 }
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
