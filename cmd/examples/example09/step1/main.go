@@ -28,8 +28,9 @@ import (
 )
 
 const (
-	url   = "http://localhost:11434"
-	model = "llama3.2-vision"
+	url       = "http://localhost:11434"
+	model     = "llama3.2-vision"
+	imagePath = "cmd/samples/roseimg.png"
 )
 
 // The context window represents the maximum number of tokens that can be sent
@@ -71,9 +72,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	fileName := "cmd/samples/roseimg.png"
-
-	data, err := readImage(fileName)
+	data, err := readImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("read image: %w", err)
 	}
@@ -97,13 +96,13 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 `
 
 	var mimeType string
-	switch filepath.Ext(fileName) {
+	switch filepath.Ext(imagePath) {
 	case ".jpg", ".jpeg":
 		mimeType = "image/jpg"
 	case ".png":
 		mimeType = "image/png"
 	default:
-		return fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+		return fmt.Errorf("unsupported file type: %s", filepath.Ext(imagePath))
 	}
 
 	// -------------------------------------------------------------------------
@@ -138,7 +137,7 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	fmt.Printf("Updating Image description: %s\n", cr.Choices[0].Content)
 
-	return updateImage(fileName, cr.Choices[0].Content)
+	return updateImage(imagePath, cr.Choices[0].Content)
 }
 
 func readImage(fileName string) ([]byte, error) {

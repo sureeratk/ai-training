@@ -38,6 +38,7 @@ import (
 const (
 	url            = "http://localhost:11434"
 	model          = "llama3.2-vision"
+	imagePath      = "cmd/samples/roseimg.png"
 	embedModel     = "bge-m3:latest"
 	dbName         = "example9"
 	collectionName = "images-4"
@@ -115,9 +116,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	fileName := "cmd/samples/roseimg.png"
-
-	data, err := readImage(fileName)
+	data, err := readImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("read image: %w", err)
 	}
@@ -141,13 +140,13 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 `
 
 	var mimeType string
-	switch filepath.Ext(fileName) {
+	switch filepath.Ext(imagePath) {
 	case ".jpg", ".jpeg":
 		mimeType = "image/jpg"
 	case ".png":
 		mimeType = "image/png"
 	default:
-		return fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+		return fmt.Errorf("unsupported file type: %s", filepath.Ext(imagePath))
 	}
 
 	// -------------------------------------------------------------------------
@@ -182,8 +181,7 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	fmt.Printf("Updating Image description: %s\n", cr.Choices[0].Content)
 
-	err = updateImage(fileName, cr.Choices[0].Content)
-	if err != nil {
+	if err := updateImage(imagePath, cr.Choices[0].Content); err != nil {
 		return fmt.Errorf("update image: %w", err)
 	}
 
@@ -200,7 +198,7 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 	fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
 
-	if err := storeDocument(ctx, col, fileName, cr.Choices[0].Content, vectors[0]); err != nil {
+	if err := storeDocument(ctx, col, imagePath, cr.Choices[0].Content, vectors[0]); err != nil {
 		return fmt.Errorf("storeDocument: %w", err)
 	}
 
