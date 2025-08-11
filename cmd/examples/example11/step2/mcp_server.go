@@ -51,7 +51,7 @@ func RegisterReadFileTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_read_file"
 	const tooDescription = "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found."
 
-	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, ReadFileTool)
+	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, ReadFileHandler)
 
 	return "/" + toolName
 }
@@ -61,8 +61,8 @@ type ReadFileToolParams struct {
 	Path string `json:"path" jsonschema:"a possible filter to use"`
 }
 
-// ReadFileTool reads the contents of a given file path.
-func ReadFileTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadFileToolParams]) (*mcp.CallToolResultFor[any], error) {
+// ReadFileHandler reads the contents of a given file path.
+func ReadFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadFileToolParams]) (*mcp.CallToolResultFor[any], error) {
 	dir := "."
 	if params.Arguments.Path != "" {
 		dir = params.Arguments.Path
@@ -98,7 +98,7 @@ func RegisterSearchFilesTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_search_files"
 	const tooDescription = "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found."
 
-	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, SearchFilesTool)
+	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, SearchFilesHandler)
 
 	return "/" + toolName
 }
@@ -110,9 +110,9 @@ type SearchFilesToolParams struct {
 	Contains string `json:"contains" jsonschema:"A string to search for inside files. It supports golang regex syntax. If not provided, no search will be performed. If provided, only return files that contain the string."`
 }
 
-// SearchFilesTool searches for files in a given directory that match a
+// SearchFilesHandler searches for files in a given directory that match a
 // given filter and contain a given string.
-func SearchFilesTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
+func SearchFilesHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
 	dir := "."
 	if params.Arguments.Path != "" {
 		dir = params.Arguments.Path
@@ -209,7 +209,7 @@ func RegisterCreateFileTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_create_file"
 	const tooDescription = "Creates a new file"
 
-	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, CreateFileTool)
+	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, CreateFileHandler)
 
 	return "/" + toolName
 }
@@ -219,9 +219,9 @@ type CreateFileToolParams struct {
 	Path string `json:"path" jsonschema:"Relative path and name of the file to create."`
 }
 
-// CreateFileTool searches for files in a given directory that match a
+// CreateFileHandler searches for files in a given directory that match a
 // given filter and contain a given string.
-func CreateFileTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
+func CreateFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
 	filePath := "."
 	if params.Arguments.Path != "" {
 		filePath = params.Arguments.Path
@@ -267,7 +267,7 @@ func RegisterGoCodeEditorTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_go_code_editor"
 	const tooDescription = "Edit Golang source code files including adding, replacing, and deleting lines."
 
-	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, GoCodeEditorTool)
+	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, GoCodeEditorHandler)
 
 	return "/" + toolName
 }
@@ -280,8 +280,8 @@ type GoCodeEditorToolParams struct {
 	LineChange string `json:"line_change" jsonschema:"Line of code to add, replace, or delete."`
 }
 
-// GoCodeEditorTool can make add, updates, and deletes to go code.
-func GoCodeEditorTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[GoCodeEditorToolParams]) (*mcp.CallToolResultFor[any], error) {
+// GoCodeEditorHandler can make add, updates, and deletes to go code.
+func GoCodeEditorHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[GoCodeEditorToolParams]) (*mcp.CallToolResultFor[any], error) {
 	path := "."
 	if params.Arguments.Path != "" {
 		path = params.Arguments.Path
