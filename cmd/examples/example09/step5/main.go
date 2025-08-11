@@ -86,7 +86,6 @@ func run() error {
 	ctx := context.Background()
 
 	// -------------------------------------------------------------------------
-	// Connect to Ollama
 
 	llm, err := ollama.New(
 		ollama.WithModel(model),
@@ -105,7 +104,6 @@ func run() error {
 	}
 
 	// -------------------------------------------------------------------------
-	// Connect to MongoDB
 
 	mongoClient, err := initDatabase(dbName, collectionName)
 	if err != nil {
@@ -115,11 +113,6 @@ func run() error {
 	col := mongoClient.Database(dbName).Collection(collectionName)
 
 	// -------------------------------------------------------------------------
-
-	files, err := getFilesFromDirectory(gallaryPath)
-	if err != nil {
-		return fmt.Errorf("get files: %w", err)
-	}
 
 	prompt := `Describe the image.
 Be concise and accurate.
@@ -139,20 +132,17 @@ Encode the list as valid JSON, as in this example:
 Make sure the JSON is valid, doesn't have any extra spaces, and is properly formatted.
 `
 
-	for _, fileName := range files {
-		data, err := readImage(fileName)
-		if err != nil {
-			return fmt.Errorf("read image: %w", err)
-		}
+	// -------------------------------------------------------------------------
 
-		var mimeType string
-		switch filepath.Ext(fileName) {
-		case ".jpg", ".jpeg":
-			mimeType = "image/jpg"
-		case ".png":
-			mimeType = "image/png"
-		default:
-			return fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+	files, err := getFilesFromDirectory(gallaryPath)
+	if err != nil {
+		return fmt.Errorf("get files: %w", err)
+	}
+
+	for _, fileName := range files {
+		data, mimeType, err := processImage(fileName)
+		if err != nil {
+			return fmt.Errorf("process image: %w", err)
 		}
 
 		fmt.Printf("Processing image: %s\n", fileName)
@@ -314,6 +304,25 @@ func getFilesFromDirectory(directoryPath string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+func processImage(fileName string) ([]byte, string, error) {
+	data, err := readImage(fileName)
+	if err != nil {
+		return nil, "", fmt.Errorf("read image: %w", err)
+	}
+
+	var mimeType string
+	switch filepath.Ext(fileName) {
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpg"
+	case ".png":
+		mimeType = "image/png"
+	default:
+		return nil, "", fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+	}
+
+	return data, mimeType, nil
 }
 
 func readImage(fileName string) ([]byte, error) {

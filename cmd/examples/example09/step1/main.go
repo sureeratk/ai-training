@@ -60,7 +60,6 @@ func run() error {
 	ctx := context.Background()
 
 	// -------------------------------------------------------------------------
-	// Connect to Ollama
 
 	llm, err := ollama.New(
 		ollama.WithModel(model),
@@ -72,10 +71,14 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	data, err := readImage(imagePath)
+	data, mimeType, err := processImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("read image: %w", err)
+		return fmt.Errorf("process image: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("Generating image description...")
 
 	prompt := `Describe the image.
 Be concise and accurate.
@@ -94,20 +97,6 @@ Encode the list as valid JSON, as in this example:
 ]
 Make sure the JSON is valid, doesn't have any extra spaces, and is properly formatted.
 `
-
-	var mimeType string
-	switch filepath.Ext(imagePath) {
-	case ".jpg", ".jpeg":
-		mimeType = "image/jpg"
-	case ".png":
-		mimeType = "image/png"
-	default:
-		return fmt.Errorf("unsupported file type: %s", filepath.Ext(imagePath))
-	}
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("Generating image description...")
 
 	messages := []llms.MessageContent{
 		{
@@ -138,6 +127,25 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 	fmt.Printf("Updating Image description: %s\n", cr.Choices[0].Content)
 
 	return updateImage(imagePath, cr.Choices[0].Content)
+}
+
+func processImage(fileName string) ([]byte, string, error) {
+	data, err := readImage(fileName)
+	if err != nil {
+		return nil, "", fmt.Errorf("read image: %w", err)
+	}
+
+	var mimeType string
+	switch filepath.Ext(fileName) {
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpg"
+	case ".png":
+		mimeType = "image/png"
+	default:
+		return nil, "", fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+	}
+
+	return data, mimeType, nil
 }
 
 func readImage(fileName string) ([]byte, error) {
