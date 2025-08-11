@@ -170,9 +170,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		for resp := range ch {
 			switch {
 			case len(resp.Choices[0].Delta.ToolCalls) > 0:
+
+				// ADD THE TOOL CALL TO THE CONVERSATION SO THE MODEL
+				// HAS CONTEXT OF THE TOOL CALL.
 				conversation = append(conversation, client.D{
 					"role":    "assistant",
-					"content": fmt.Sprintf("Tool call: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
+					"content": fmt.Sprintf("Tool call %s: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].ID, resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 				})
 
 				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)

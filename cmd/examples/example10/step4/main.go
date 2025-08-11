@@ -247,7 +247,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 				conversation = a.addToConversation(reasonContent, conversation, client.D{
 					"role":    "assistant",
-					"content": fmt.Sprintf("Tool call: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
+					"content": fmt.Sprintf("Tool call %s: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].ID, resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 				})
 
 				toolID := resp.Choices[0].Delta.ToolCalls[0].ID
