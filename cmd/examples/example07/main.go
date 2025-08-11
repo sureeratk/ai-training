@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
@@ -178,7 +177,6 @@ Context: %s
 Question: %s
 `
 
-	var wordCount int
 	var chunks strings.Builder
 
 	for _, res := range results {
@@ -186,12 +184,10 @@ Question: %s
 			chunks.WriteString(res.Text)
 			chunks.WriteString(".\n")
 
-			// We don't need to provide more than 1000 words.
-			words := strings.Fields(res.Text)
-			wordCount += len(words)
-			if wordCount >= 1000 {
-				break
-			}
+			// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
+			// SO YOU DON'T EXCEED THE CONTEXT WINDOW (MAXIMUM TOKENS ALLOWED BY
+			// THE MODEL). OUR CURRENT MODEL SUPPORTS 8192 TOKENS. THERE IS A
+			// TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH THIS.
 		}
 	}
 
@@ -203,15 +199,10 @@ Question: %s
 
 	finalPrompt := fmt.Sprintf(prompt, content, question)
 
-	// Setup a wait group to wait for the entire response.
-	var wg sync.WaitGroup
-	wg.Add(1)
-
 	// This function will display the response as it comes from the server.
 	f := func(ctx context.Context, chunk []byte) error {
-		if ctx.Err() != nil || len(chunk) == 0 {
-			wg.Done()
-			return nil
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
 		fmt.Printf("%s", chunk)
@@ -222,9 +213,6 @@ Question: %s
 	if _, err := llm.Call(ctx, finalPrompt, llms.WithStreamingFunc(f)); err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
-
-	// Wait until we receive the entire response.
-	wg.Wait()
 
 	return nil
 }

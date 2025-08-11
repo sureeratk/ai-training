@@ -21,7 +21,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
@@ -518,15 +517,10 @@ Question: %s
 	fmt.Println(finalPrompt)
 	fmt.Print("\n======================================\n")
 
-	// Setup a wait group to wait for the entire response.
-	var wg sync.WaitGroup
-	wg.Add(1)
-
 	// This function will display the response as it comes from the server.
 	f := func(ctx context.Context, chunk []byte) error {
-		if ctx.Err() != nil || len(chunk) == 0 {
-			wg.Done()
-			return nil
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
 		fmt.Printf("%s", chunk)
@@ -537,9 +531,6 @@ Question: %s
 	if _, err := llm.Call(ctx, finalPrompt, llms.WithStreamingFunc(f)); err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
-
-	// Wait until we receive the entire response.
-	wg.Wait()
 
 	return nil
 }

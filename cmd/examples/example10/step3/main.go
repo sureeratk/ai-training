@@ -143,7 +143,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			"model":       model,
 			"messages":    conversation,
 			"max_tokens":  contextWindow,
-			"temperature": 0.0,
+			"temperature": 0.1,
 			"top_p":       0.1,
 			"top_k":       1,
 			"stream":      true,

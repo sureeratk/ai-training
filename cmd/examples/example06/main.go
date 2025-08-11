@@ -125,6 +125,14 @@ func createEmbeddings() error {
 		chunk := strings.Trim(chunk, "<CHUNK>")
 		chunk = strings.Trim(chunk, "</CHUNK>")
 
+		// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
+		// SO YOU DON'T EXCEED THE NUMBER OF TOKENS THE MODEL WILL USE TO
+		// CREATE THE VECTOR EMBEDDING. THE MODEL WILL TRUNCATE YOUR CHUNK IF IT
+		// EXCEEDS THE NUMBER OF TOKENS IT CAN USE TO CREATE THE VECTOR
+		// EMBEDDING. THERE ARE MODELS THAT ONLY VECTORIZE AS LITTLE AS 512
+		// TOKENS. THERE IS A TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH
+		// THIS.
+
 		// Get the vector embedding for this chunk.
 		embedding, err := llm.CreateEmbedding(context.Background(), []string{chunk})
 		if err != nil {
