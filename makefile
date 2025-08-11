@@ -79,17 +79,14 @@ example10-step3:
 
 example10-step4:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example10/step4/main.go
+	go run cmd/examples/example10/step4/main.go cmd/examples/example10/step4/functions.go
 
 example11-step1:
 	go run cmd/examples/example11/step1/main.go
 
 example11-step2:
-	go run cmd/examples/example11/step2/main.go
-
-example11-step3:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example11/step3/main.go cmd/examples/example11/step3/mcp_client.go cmd/examples/example11/step3/mcp_server.go
+	go run cmd/examples/example11/step2/main.go cmd/examples/example11/step2/functions.go cmd/examples/example11/step2/mcp_server.go
 
 # ==============================================================================
 # Install dependencies

@@ -127,7 +127,7 @@ func weatherQuestion(ctx context.Context) error {
 	// Send the result of the tool call back to the model
 
 	d = client.D{
-		"model":       "qwen3:8b",
+		"model":       model,
 		"messages":    conversation,
 		"max_tokens":  contextWindow,
 		"temperature": 0.1,

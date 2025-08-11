@@ -72,7 +72,6 @@ func run() error {
 
 // Tool defines the interface that all tools must implement.
 type Tool interface {
-	Name() string
 	Call(ctx context.Context, arguments map[string]any) client.D
 }
 
@@ -225,7 +224,7 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []cl
 			continue
 		}
 
-		fmt.Printf("\n\n\u001b[92mtool\u001b[0m: %s(%v)\n", tool.Name(), toolCall.Function.Arguments)
+		fmt.Printf("\n\n\u001b[92mtool\u001b[0m: %s(%v)\n", toolCall.Function.Name, toolCall.Function.Arguments)
 
 		resp := tool.Call(ctx, toolCall.Function.Arguments)
 		resps = append(resps, resp)

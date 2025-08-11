@@ -9,7 +9,7 @@
 //
 // # Running the example:
 //
-//	$ make example11-step2
+//	$ make example11-step1
 //
 // # This doesn't require you to run any additional services.
 package main
@@ -139,6 +139,10 @@ type ShellCommandParams struct {
 	Command []string `json:"command" jsonschema:"the command and arguments to execute"`
 }
 
+// ShellCommand is a VERY DANGEROUS tool that should never be implemented like this.
+// I am showing this because you could leverage CLI tooling to do things like
+// list files, read files, etc, but you need some way to limit the commands that
+// can be executed with a level of security.
 func ShellCommand(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ShellCommandParams]) (*mcp.CallToolResultFor[any], error) {
 	var out bytes.Buffer
 	cmd := exec.Command(params.Arguments.Command[0], params.Arguments.Command[1:]...)
