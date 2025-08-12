@@ -478,8 +478,10 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 
 	var finalResults []searchResult
 
+	fmt.Print("Data:\n\n")
 	for _, result := range results {
 		if result.Score >= 0.75 {
+			fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
 			finalResults = append(finalResults, searchResult{
 				FileName:    result.FileName,
 				Description: result.Description,
@@ -495,25 +497,50 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 	// -------------------------------------------------------------------------
 	// Let's ask the LLM to provide a response
 
-	prompt := `Use the following results to answer the user's question. If there
-	are not results, say that you cannot find anything matching the description.
+	prompt := `
+	INSTRUCTIONS:
 	
-	The response should be in a JSON format with the following fields:
-	{"status": "found", "filename": "<file_name>", "description": "<image_description>"}
+	- Use the following RESULTS to answer the user's question.
 
-	If there are no results, we should have this response:
-	{"status": "not found"}
-
-	Responses should be properly formatted and always a JSON like in the example.
-	Make sure the path of the file is always the same as that specified in the context.
-	Do not add anything to the path if the path is relative or not a fully qualified path.
-	Ensure that output path is the one in the input path and matches every character.
-	Provide just a brief description of the image.
-
-	The data in the context is a JSON object with the following fields:
+	- The data will be a JSON array with the following fields:
+	
 	[
-		{"file_name":"<filepath>", "image_description":"<description>"},
+		{
+			"file_name":string,
+			"image_description":string
+		},
+		{
+			"file_name":string,
+			"image_description":string
+		}
 	]
+
+	- The response should be in a JSON array with the following fields:
+	
+	[
+		{
+			"status": string,
+			"filename": string,
+			"description": string
+		},
+		{
+			"status": string,
+			"filename": string,
+			"description": string
+		}
+	]
+
+	- If there are no RESULTS, provide this response:
+	
+	[
+		{
+			"status": "not found"
+		}
+	]
+
+	- Do not change anything related to the file_name provided.
+	- Only provide a brief description of the image.
+	- Only provide a valid JSON response.
 
 	RESULTS:
 	
@@ -535,6 +562,8 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 		fmt.Printf("%s", chunk)
 		return nil
 	}
+
+	fmt.Print("\nResults:\n\n")
 
 	// Send the prompt to the model server.
 	_, err = llm.Call(
