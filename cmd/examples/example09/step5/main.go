@@ -14,7 +14,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -114,23 +113,21 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	prompt := `Describe the image.
-Be concise and accurate.
-Do not be overly verbose or stylistic.
-Make sure all the elements in the image are enumerated and described.
-Do not include any additional details.
-Keep the description under 200 words.
-At the end of the description, create a list of tags with the names of all the elements in the image.
-Do no output anything past this list.
-Encode the list as valid JSON, as in this example:
-[
-  "tag1",
-  "tag2",
-  "tag3",
-  ...
-]
-Make sure the JSON is valid, doesn't have any extra spaces, and is properly formatted.
-`
+	prompt := `Describe the image. Be concise and accurate. Do not be overly
+	verbose or stylistic. Make sure all the elements in the image are
+	enumerated and described. Do not include any additional details. Keep
+	the description under 200 words. At the end of the description, create
+	a list of tags with the names of all the elements in the image. Do not
+	output anything past this list.
+	Encode the list as valid JSON, as in this example:
+	[
+		"tag1",
+		"tag2",
+		"tag3",
+		...
+	]
+	Make sure the JSON is valid, doesn't have any extra spaces, and is
+	properly formatted.`
 
 	// -------------------------------------------------------------------------
 
@@ -140,12 +137,21 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 	}
 
 	for _, fileName := range files {
+		fmt.Printf("\nProcessing image: %s\n", fileName)
+
+		findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
+		if findRes.Err() == nil {
+			fmt.Println("  - Image already exists")
+			continue
+		}
+
 		data, mimeType, err := processImage(fileName)
 		if err != nil {
 			return fmt.Errorf("process image: %w", err)
 		}
 
-		fmt.Printf("Processing image: %s\n", fileName)
+		fmt.Println("  - Generating image description")
+
 		messages := []llms.MessageContent{
 			{
 				Role: llms.ChatMessageTypeHuman,
@@ -172,7 +178,7 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 		// -------------------------------------------------------------------------
 
-		fmt.Printf("Updating Image description for %s: %s\n\n", fileName, cr.Choices[0].Content)
+		fmt.Println("  - Updating image description")
 
 		err = updateImage(fileName, cr.Choices[0].Content)
 		if err != nil {
@@ -181,7 +187,7 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 		// -------------------------------------------------------------------------
 
-		fmt.Println("Generate embeddings for the image description")
+		fmt.Println("  - Generate embeddings for the image description")
 
 		vectors, err := llmEmbed.CreateEmbedding(ctx, []string{cr.Choices[0].Content})
 		if err != nil {
@@ -190,41 +196,56 @@ Make sure the JSON is valid, doesn't have any extra spaces, and is properly form
 
 		// -------------------------------------------------------------------------
 
-		fmt.Printf("Inserting image description into the database: %s\n", cr.Choices[0].Content)
+		fmt.Println("  - Inserting image description into the database")
 
-		if err := storeDocument(ctx, col, fileName, cr.Choices[0].Content, vectors[0]); err != nil {
-			return fmt.Errorf("storeDocuments: %w", err)
+		d1 := document{
+			FileName:    fileName,
+			Description: cr.Choices[0].Content,
+			Embedding:   vectors[0],
+		}
+
+		res, err := col.InsertOne(ctx, d1)
+		if err != nil {
+			return fmt.Errorf("insert: %w", err)
+		}
+
+		fmt.Printf("  - Inserted db id: %s\n", res.InsertedID)
+	}
+
+	// We need to give mongodb some time to index the documents.
+	// There is no way to know when this gets done.
+	time.Sleep(time.Second)
+
+	fmt.Print("\nAsk questions about images (use 'ctrl-c' to quit)\n\n")
+
+	for {
+		// -------------------------------------------------------------------------
+		// Continue to the LLM search/query part after processing all files
+
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Question: ")
+
+		question, _ := reader.ReadString('\n')
+		if question == "" {
+			return nil
+		}
+
+		fmt.Print("\nSearching...\n\n")
+
+		// -------------------------------------------------------------------------
+
+		ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
+		defer cancel()
+
+		results, err := vectorSearch(ctx, llmEmbed, col, question)
+		if err != nil {
+			return fmt.Errorf("vectorSearch: %w", err)
+		}
+
+		if err := questionResponse(ctx, llm, question, results); err != nil {
+			return fmt.Errorf("questionResponse: %w", err)
 		}
 	}
-
-	// -------------------------------------------------------------------------
-	// Continue to the LLM search/query part after processing all files
-
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Search the database for an image: ")
-
-	question, _ := reader.ReadString('\n')
-	if question == "" {
-		return nil
-	}
-
-	fmt.Print("THIS MAY TAKE A MINUTE OR MORE, BE PATIENT\n\n")
-
-	// -------------------------------------------------------------------------
-
-	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
-	defer cancel()
-
-	results, err := vectorSearch(ctx, llmEmbed, col, question)
-	if err != nil {
-		return fmt.Errorf("vectorSearch: %w", err)
-	}
-
-	if err := questionResponse(ctx, llm, question, results); err != nil {
-		return fmt.Errorf("questionResponse: %w", err)
-	}
-
-	return nil
 }
 
 func initDatabase(dbName string, collectionName string) (*mongo.Client, error) {
@@ -239,7 +260,7 @@ func initDatabase(dbName string, collectionName string) (*mongo.Client, error) {
 		return nil, fmt.Errorf("connectToMongo: %w", err)
 	}
 
-	fmt.Println("Connected to MongoDB")
+	fmt.Println("\nConnected to MongoDB")
 
 	// -------------------------------------------------------------------------
 	// Create database and collection
@@ -410,53 +431,19 @@ func updateImage(fileName string, description string) error {
 	return nil
 }
 
-func storeDocument(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
-
-	// -------------------------------------------------------------------------
-	// If this record already exist, we don't need to add it again.
-
-	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
-	switch {
-	case findRes.Err() == nil:
-		fmt.Println("Document already exists")
-		return nil
-	case !errors.Is(findRes.Err(), mongo.ErrNoDocuments):
-		return fmt.Errorf("findOne: %w", findRes.Err())
-	}
-
-	// -------------------------------------------------------------------------
-	// Let's add the document to the database.
-
-	d1 := document{
-		FileName:    fileName,
-		Description: description,
-		Embedding:   vector,
-	}
-
-	res, err := col.InsertOne(ctx, d1)
-	if err != nil {
-		return fmt.Errorf("insert: %w", err)
-	}
-
-	fmt.Printf("Inserted db id: %s\n", res.InsertedID)
-
-	return nil
-}
-
 func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
 
 	// -------------------------------------------------------------------------
-	// Generate a vector for the question.
+	// Get the vector embedding for the question.
 
-	vectors, err := llm.CreateEmbedding(ctx, []string{question})
+	embedding, err := llm.CreateEmbedding(ctx, []string{question})
 	if err != nil {
 		return nil, fmt.Errorf("create embedding: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
-	// Perform the vector search.
-
 	// We want to find the nearest neighbors from the question vector embedding.
+
 	pipeline := mongo.Pipeline{
 		{{
 			Key: "$vectorSearch",
@@ -464,7 +451,7 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 				"index":         "vector_index",
 				"exact":         false,
 				"path":          "embedding",
-				"queryVector":   vectors[0],
+				"queryVector":   embedding[0],
 				"numCandidates": 5,
 				"limit":         5,
 			}},
@@ -488,59 +475,52 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 	}
 	defer cur.Close(ctx)
 
+	// -------------------------------------------------------------------------
+	// Return and display the results.
+
 	var results []searchResult
 	if err := cur.All(ctx, &results); err != nil {
 		return nil, fmt.Errorf("all: %w", err)
 	}
 
-	fmt.Println("=======================================")
-	for _, result := range results {
-		fmt.Printf("%s -> %.2f -> %s\n", result.FileName, result.Score, result.Description)
-	}
-	fmt.Print("=======================================\n")
-
 	return results, nil
 }
 
 func questionResponse(ctx context.Context, llm *ollama.LLM, question string, results []searchResult) error {
-	prompt := `
-Use the following pieces of information to answer the user's question.
-	
-If you don't know the answer, say that you cannot find anything matching the description.	
-
-Answer the question only with the full filename, including path, of the picture matching the description without providing any additional details except what you already have.
-
-The response should be in a JSON format with the following fields:
-{"status": "found", "filename": "<filename>"}
-
-If the file is missing, we should have this response:
-{"status": "not found"}
-
-Responses should be properly formatted and always a JSON like in the example.
-Make sure the path of the file is always the same as that specified in the context.
-Do not add anything to the path if the path is relative or not a fully qualified path.
-Ensure that output path is the one in the input path and matches every character.
-
-The data in the context is a JSON object with the following fields:
-[
-	{"file_name":"<filepath>", "image_description":"<description>"},
-]
-
-Context:
-%s
-	
-Question: %s
-`
 	content, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	finalPrompt := fmt.Sprintf(prompt, string(content), question)
+	prompt := `Use the following pieces of information to answer the user's
+	question. If you don't know the answer, say that you cannot find anything
+	matching the description. Answer the question only with the full filename,
+	including path, of the picture matching the description without providing
+	any additional details except what you already have.
+	
+	The response should be in a JSON format with the following fields:
+	{"status": "found", "filename": "<filename>"}
 
-	fmt.Print("\n=====================================\n")
-	fmt.Println(finalPrompt)
-	fmt.Print("\n======================================\n")
+	If the file is missing, we should have this response:
+	{"status": "not found"}
+
+	Responses should be properly formatted and always a JSON like in the example.
+	Make sure the path of the file is always the same as that specified in the context.
+	Do not add anything to the path if the path is relative or not a fully qualified path.
+	Ensure that output path is the one in the input path and matches every character.
+
+	The data in the context is a JSON object with the following fields:
+	[
+		{"file_name":"<filepath>", "image_description":"<description>"},
+	]
+
+	Context:
+	%s
+		
+	Question: %s
+	`
+
+	finalPrompt := fmt.Sprintf(prompt, string(content), question)
 
 	// This function will display the response as it comes from the server.
 	f := func(ctx context.Context, chunk []byte) error {
@@ -562,6 +542,8 @@ Question: %s
 	if err != nil {
 		return fmt.Errorf("call: %w", err)
 	}
+
+	fmt.Printf("\n\n")
 
 	return nil
 }
