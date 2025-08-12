@@ -110,5 +110,5 @@ func main() {
 
 	// Now compare a (King - Man + Woman) to a Queen.
 	result := vector.CosineSimilarity(kingSubManPlusWoman, queen)
-	fmt.Printf("King - Man + Woman ~= Queen similarity: %.3f%%\n", result*100)
+	fmt.Printf("King - Man + Woman ~= Queen similarity: %.2f%%\n", result*100)
 }
