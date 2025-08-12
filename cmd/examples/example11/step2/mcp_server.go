@@ -21,7 +21,7 @@ import (
 
 // mcpListenAndServe starts the MCP server for all the tooling we support.
 func mcpListenAndServe(host string) {
-	fmt.Printf("\nServer: MCP servers serving at %s\n", host)
+	fmt.Printf("Server: MCP servers serving at %s\n", host)
 
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file_operations", Version: "v1.0.0"}, nil)
 

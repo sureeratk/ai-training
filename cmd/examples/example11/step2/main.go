@@ -194,7 +194,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		"content": systemPrompt,
 	})
 
-	fmt.Printf("Chat with %s (use 'ctrl-c' to quit)\n", model)
+	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
 
 	for {
 		// ---------------------------------------------------------------------
