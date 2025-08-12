@@ -466,10 +466,34 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 }
 
 func questionResponse(ctx context.Context, llm *ollama.LLM, question string, results []searchResult) error {
-	content, err := json.MarshalIndent(results, "", "  ")
+
+	// -------------------------------------------------------------------------
+	// Let's filter the results to only include the ones with a score above 0.75.
+	// We don't need to include the score or embeddings in the final results.
+
+	type searchResult struct {
+		FileName    string `json:"file_name"`
+		Description string `json:"image_description"`
+	}
+
+	var finalResults []searchResult
+
+	for _, result := range results {
+		if result.Score >= 0.75 {
+			finalResults = append(finalResults, searchResult{
+				FileName:    result.FileName,
+				Description: result.Description,
+			})
+		}
+	}
+
+	content, err := json.Marshal(finalResults)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// Let's ask the LLM to provide a response
 
 	prompt := `Use the following pieces of information to answer the user's
 	question. If you don't know the answer, say that you cannot find anything
@@ -478,7 +502,7 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 	any additional details except what you already have.
 	
 	The response should be in a JSON format with the following fields:
-	{"status": "found", "filename": "<filename>"}
+	{"status": "found", "filename": "<file_name>", "description": "<image_description>"}
 
 	If the file is missing, we should have this response:
 	{"status": "not found"}
@@ -487,6 +511,7 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 	Make sure the path of the file is always the same as that specified in the context.
 	Do not add anything to the path if the path is relative or not a fully qualified path.
 	Ensure that output path is the one in the input path and matches every character.
+	Provide just a brief description of the image.
 
 	The data in the context is a JSON object with the following fields:
 	[
