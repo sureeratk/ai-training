@@ -483,8 +483,6 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 		return nil, fmt.Errorf("all: %w", err)
 	}
 
-	fmt.Println(results)
-
 	return results, nil
 }
 
