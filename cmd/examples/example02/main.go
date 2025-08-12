@@ -92,7 +92,7 @@ func main() {
 		dataPoint.Embedding = vectors[0]
 		dataPoints[i] = dataPoint
 
-		fmt.Printf("Vector: len(%d) %v...%v\n", len(vectors[0]), vectors[0][0:2], vectors[0][len(vectors[0])-2:])
+		fmt.Printf("Vector: Name(%s) len(%d) %v...%v\n", dataPoint.Name, len(vectors[0]), vectors[0][0:2], vectors[0][len(vectors[0])-2:])
 	}
 
 	fmt.Print("\n")
