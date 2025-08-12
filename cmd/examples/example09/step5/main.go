@@ -19,7 +19,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
@@ -42,23 +41,6 @@ const (
 	collectionName = "images-5"
 	gallaryPath    = "cmd/samples/gallery/"
 )
-
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
-
-func init() {
-	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
-		var err error
-		contextWindow, err = strconv.Atoi(v)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-// =============================================================================
 
 type document struct {
 	FileName    string    `bson:"file_name"`
@@ -170,7 +152,7 @@ func run() error {
 		cr, err := llm.GenerateContent(
 			ctx,
 			messages,
-			llms.WithMaxTokens(contextWindow),
+			llms.WithMaxTokens(500),
 			llms.WithTemperature(1.0),
 		)
 		if err != nil {
@@ -586,7 +568,7 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 		ctx,
 		finalPrompt,
 		llms.WithStreamingFunc(f),
-		llms.WithMaxTokens(contextWindow),
+		llms.WithMaxTokens(500),
 		llms.WithTemperature(1.0),
 	)
 	if err != nil {

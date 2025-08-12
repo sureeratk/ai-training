@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,23 +34,6 @@ const (
 	url   = "http://localhost:11434"
 	model = "llama3.2-vision"
 )
-
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
-
-func init() {
-	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
-		var err error
-		contextWindow, err = strconv.Atoi(v)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -176,7 +158,7 @@ func getResponse(ctx context.Context, question string, data []map[string]any) (s
 
 	prompt := fmt.Sprintf(response, builder.String(), question)
 
-	result, err := llm.Call(ctx, prompt, llms.WithMaxTokens(contextWindow))
+	result, err := llm.Call(ctx, prompt, llms.WithMaxTokens(1000))
 	if err != nil {
 		return "", fmt.Errorf("call: %w", err)
 	}

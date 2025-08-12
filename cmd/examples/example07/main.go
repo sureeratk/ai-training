@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,23 +35,6 @@ const (
 	url   = "http://localhost:11434"
 	model = "bge-m3:latest"
 )
-
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
-
-func init() {
-	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
-		var err error
-		contextWindow, err = strconv.Atoi(v)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-// =============================================================================
 
 type searchResult struct {
 	ID        int       `bson:"id"`
@@ -237,7 +219,7 @@ Question: %s
 		ctx,
 		finalPrompt,
 		llms.WithStreamingFunc(f),
-		llms.WithMaxTokens(contextWindow))
+		llms.WithMaxTokens(1000))
 	if err != nil {
 		return fmt.Errorf("call: %w", err)
 	}

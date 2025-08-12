@@ -17,7 +17,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/dsoprea/go-exif/v3"
 	exifcommon "github.com/dsoprea/go-exif/v3/common"
@@ -32,23 +31,6 @@ const (
 	model     = "llama3.2-vision"
 	imagePath = "cmd/samples/gallery/roseimg.png"
 )
-
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
-
-func init() {
-	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
-		var err error
-		contextWindow, err = strconv.Atoi(v)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -114,7 +96,7 @@ func run() error {
 	cr, err := llm.GenerateContent(
 		ctx,
 		messages,
-		llms.WithMaxTokens(contextWindow),
+		llms.WithMaxTokens(500),
 		llms.WithTemperature(1.0),
 	)
 	if err != nil {
