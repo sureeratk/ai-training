@@ -105,7 +105,7 @@ docker:
 
 ollama-pull:
 	ollama pull bge-m3:latest
-	ollama pull llama3.2-vision
+	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
 
 python-install:

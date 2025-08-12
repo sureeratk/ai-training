@@ -28,7 +28,7 @@ import (
 
 const (
 	url        = "http://localhost:11434"
-	model      = "llama3.2-vision"
+	model      = "qwen2.5vl:latest"
 	embedModel = "bge-m3:latest"
 	imagePath  = "cmd/samples/gallery/roseimg.png"
 )

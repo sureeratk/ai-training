@@ -32,7 +32,7 @@ import (
 
 const (
 	url   = "http://localhost:11434"
-	model = "llama3.2-vision"
+	model = "qwen2.5vl:latest"
 )
 
 func main() {

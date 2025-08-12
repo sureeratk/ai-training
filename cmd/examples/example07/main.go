@@ -160,7 +160,7 @@ func questionResponse(ctx context.Context, question string, results []searchResu
 
 	// Open a connection with ollama to access the model.
 	llm, err := ollama.New(
-		ollama.WithModel("llama3.2-vision"),
+		ollama.WithModel("qwen2.5vl:latest"),
 		ollama.WithServerURL("http://localhost:11434"),
 	)
 	if err != nil {
