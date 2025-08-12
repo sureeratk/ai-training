@@ -55,7 +55,7 @@ func run() error {
 	// -------------------------------------------------------------------------
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Ask a question about the garage sale system: ")
+	fmt.Print("\nAsk a question about the garage sale system: ")
 
 	question, _ := reader.ReadString('\n')
 	if question == "" {
@@ -177,14 +177,20 @@ var (
 )
 
 func dbInit(ctx context.Context) (*sqlx.DB, error) {
+	fmt.Println("\nConnecting to the DB")
+
 	db, err := dbConnection()
 	if err != nil {
 		return nil, fmt.Errorf("dbConnection: %w", err)
 	}
 
+	fmt.Println("Creating Schema")
+
 	if err := dbExecute(ctx, db, schemaSQL); err != nil {
 		return nil, fmt.Errorf("dbExecute: %w", err)
 	}
+
+	fmt.Println("Inserting Data")
 
 	if err := dbExecute(ctx, db, insertSQL); err != nil {
 		return nil, fmt.Errorf("dbExecute: %w", err)

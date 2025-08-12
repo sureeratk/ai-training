@@ -86,6 +86,7 @@ func run() error {
 }
 
 func createEmbeddings() error {
+	fmt.Println("\nCreated Embeddings")
 
 	// If the embeddings already exist, we don't need to do this again.
 	if _, err := os.Stat("zarf/data/book.embeddings"); err == nil {

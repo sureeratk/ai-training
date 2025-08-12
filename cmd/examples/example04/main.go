@@ -62,7 +62,7 @@ func run() error {
 	}
 	defer client.Disconnect(ctx)
 
-	fmt.Println("Connected to MongoDB")
+	fmt.Println("\nConnected to MongoDB")
 
 	// -------------------------------------------------------------------------
 	// Create database and collection
@@ -97,6 +97,18 @@ func run() error {
 	fmt.Println("Created Vector Index")
 
 	// -------------------------------------------------------------------------
+	// Apply a unique index just to be safe.
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	col.Indexes().CreateOne(ctx, indexModel)
+
+	fmt.Println("Created ID Index")
+
+	// -------------------------------------------------------------------------
 	// Store some documents with their embeddings.
 
 	if err := storeDocuments(ctx, col); err != nil {
@@ -106,7 +118,7 @@ func run() error {
 	// -------------------------------------------------------------------------
 	// Perform a vector search.
 
-	fmt.Println("---- VECTOR SEARCH ----")
+	fmt.Print("\n---- VECTOR SEARCH ----\n\n")
 
 	results, err := vectorSearch(ctx, col, []float64{1.2, 2.2, 3.2, 4.2}, 10)
 	if err != nil {
@@ -132,16 +144,6 @@ func storeDocuments(ctx context.Context, col *mongo.Collection) error {
 	if findRes.RemainingBatchLength() != 0 {
 		return nil
 	}
-
-	// -------------------------------------------------------------------------
-	// Apply a unique index just to be safe.
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	col.Indexes().CreateOne(ctx, indexModel)
 
 	// -------------------------------------------------------------------------
 	// Let's add two documents to the database.

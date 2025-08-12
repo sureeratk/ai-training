@@ -53,7 +53,7 @@ func main() {
 
 func run() error {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Ask Bill a question about Go: ")
+	fmt.Print("\nAsk Bill a question about Go: ")
 
 	question, _ := reader.ReadString('\n')
 	if question == "" {

@@ -105,6 +105,8 @@ func questionResponse(ctx context.Context) error {
 		return nil
 	}
 
+	fmt.Print("\nModel Response:\n\n")
+
 	// Send the prompt to the model server.
 	_, err = llm.Call(
 		ctx,
