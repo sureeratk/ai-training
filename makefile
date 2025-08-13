@@ -120,6 +120,7 @@ example11-step2:
 # Manage project
 
 compose-up:
+	rm -rf zarf/docker/db_data && \
 	docker compose -f zarf/docker/compose.yaml up
 
 compose-down:

@@ -1,6 +1,6 @@
 module github.com/ardanlabs/ai-training
 
-go 1.23.0
+go 1.25.0
 
 require (
 	code.sajari.com/docconv/v2 v2.0.0-pre.4
@@ -33,7 +33,7 @@ require (
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/go-xmlfmt/xmlfmt v1.1.3 // indirect
-	github.com/golang/geo v0.0.0-20250806055131-e46a1d5e4545 // indirect
+	github.com/golang/geo v0.0.0-20250813021530-247f39904721 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

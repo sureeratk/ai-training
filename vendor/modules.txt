@@ -67,7 +67,7 @@ github.com/go-resty/resty/v2/shellescape
 # github.com/go-xmlfmt/xmlfmt v1.1.3
 ## explicit
 github.com/go-xmlfmt/xmlfmt
-# github.com/golang/geo v0.0.0-20250806055131-e46a1d5e4545
+# github.com/golang/geo v0.0.0-20250813021530-247f39904721
 ## explicit; go 1.21.0
 github.com/golang/geo/r1
 github.com/golang/geo/r2
