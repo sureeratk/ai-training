@@ -24,11 +24,6 @@ func NewGetWeather(tools map[string]Tool) client.D {
 	return gw.toolDocument()
 }
 
-// Name returns the name of the tool.
-func (gw *GetWeather) Name() string {
-	return gw.name
-}
-
 // toolDocument defines the metadata for the tool that is provied to the model.
 func (gw *GetWeather) toolDocument() client.D {
 	return client.D{
