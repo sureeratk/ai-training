@@ -89,10 +89,8 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		log.Println(s)
 	}
 
-	sseClient := client.NewSSE[client.ChatSSE](logger)
-
 	agent := Agent{
-		sseClient:      sseClient,
+		sseClient:      client.NewSSE[client.ChatSSE](logger),
 		getUserMessage: getUserMessage,
 	}
 

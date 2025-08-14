@@ -1,7 +1,7 @@
 // https://ampcode.com/how-to-build-an-agent
 //
-// This example shows you how add token counting, context window limits, and
-// better UI formatting to the chat agent from step 1.
+// This example shows you how to add a system prompt and better UI formatting
+// from the chat agent in step 1.
 //
 // # Running the example:
 //
@@ -89,10 +89,8 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		log.Println(s)
 	}
 
-	sseClient := client.NewSSE[client.ChatSSE](logger)
-
 	agent := Agent{
-		sseClient:      sseClient,
+		sseClient:      client.NewSSE[client.ChatSSE](logger),
 		getUserMessage: getUserMessage,
 	}
 
@@ -197,7 +195,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				}
 
 			// WE NEED TO CHECK IF THE MODEL IS THINKING VIA THIS REASONING
-			// FIELD AND TRACK AND CAPTURE THAT SEPARATELY FROM THE CONVERSATION.
+			// FIELD AND FORMAT THE RESPONSE PROPERLY.
 			case resp.Choices[0].Delta.Reasoning != "":
 				if !reasonThinking {
 					fmt.Print("\n")

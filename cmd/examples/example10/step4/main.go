@@ -105,14 +105,12 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		log.Println(s)
 	}
 
-	sseClient := client.NewSSE[client.ChatSSE](logger)
-
 	// CONSTRUCT THE TOOLS MAP HERE BECAUSE IT IS PASSED ON TOOL CONSTRUCTION
 	// SO TOOLS CAN REGISTER THEMSELVES IN THIS MAP OF AVAILABLE TOOLS.
 	tools := map[string]Tool{}
 
 	agent := Agent{
-		sseClient:      sseClient,
+		sseClient:      client.NewSSE[client.ChatSSE](logger),
 		getUserMessage: getUserMessage,
 
 		// ADD THE TOOLNG SUPPORT TO THE AGENT.

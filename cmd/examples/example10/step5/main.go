@@ -2,7 +2,7 @@
 //
 // This example shows you how introduce "real" tooling into the coding agent
 // from step4. We will add support for reading, listing, creating, and editing
-// files.
+// files. We also enhance the agent's UI.
 //
 // # Running the example:
 //
@@ -114,8 +114,6 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		log.Println(s)
 	}
 
-	sseClient := client.NewSSE[client.ChatSSE](logger)
-
 	// -------------------------------------------------------------------------
 	// Construct the tokenizer.
 
@@ -130,7 +128,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	tools := map[string]Tool{}
 
 	agent := Agent{
-		sseClient:      sseClient,
+		sseClient:      client.NewSSE[client.ChatSSE](logger),
 		getUserMessage: getUserMessage,
 		tke:            tke,
 		tools:          tools,
