@@ -19,13 +19,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/tiktoken"
 )
 
 const (
@@ -79,10 +77,6 @@ func run() error {
 type Agent struct {
 	sseClient      *client.SSEClient[client.ChatSSE]
 	getUserMessage func() (string, bool)
-
-	// WE WILL ADD OUR OWN TOKENIZER TO COUNT THE TOKENS IN THE CONVERSATION.
-
-	tke *tiktoken.Tiktoken
 }
 
 // NewAgent creates a new instance of Agent.
@@ -97,18 +91,9 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 	sseClient := client.NewSSE[client.ChatSSE](logger)
 
-	// WE WILL CONSTRUCT OUR OWN TOKENIZER.
-	tke, err := tiktoken.NewTiktoken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tiktoken: %w", err)
-	}
-
 	agent := Agent{
 		sseClient:      sseClient,
 		getUserMessage: getUserMessage,
-
-		// ADD THE TOKENIZER TO THE AGENT.
-		tke: tke,
 	}
 
 	return &agent, nil
@@ -126,10 +111,6 @@ Reasoning: high
 // Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
-
-	// WE WILL MAINTAIN THE REASONING CONTENT FOR TOKEN COUNTING.
-	// AND TO MAKE SURE WE DON'T ADD THE REASONING TO THE CONVERSATION.
-	var reasonContent []string
 
 	// WE WILL ADD THE SYSTEM PROMPT TO THE CONVERSATION.
 	conversation = append(conversation, client.D{
@@ -178,7 +159,6 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		reasonThinking := false  // GPT models provide a Reasoning field.
 		contentThinking := false // Other reasoning models use <think> tags.
-		reasonContent = nil      // Reset the reasoning content for this next call.
 
 		// WE WILL ADD SOME IMPROVED FORMATTING.
 		fmt.Print("\n")
@@ -213,20 +193,18 @@ func (a *Agent) Run(ctx context.Context) error {
 					chunks = append(chunks, resp.Choices[0].Delta.Content)
 
 				case contentThinking:
-					reasonContent = append(reasonContent, resp.Choices[0].Delta.Content)
 					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
 				}
 
 			// WE NEED TO CHECK IF THE MODEL IS THINKING VIA THIS REASONING
 			// FIELD AND TRACK AND CAPTURE THAT SEPARATELY FROM THE CONVERSATION.
 			case resp.Choices[0].Delta.Reasoning != "":
-				reasonThinking = true
-
-				if len(reasonContent) == 0 {
+				if !reasonThinking {
 					fmt.Print("\n")
 				}
 
-				reasonContent = append(reasonContent, resp.Choices[0].Delta.Reasoning)
+				reasonThinking = true
+
 				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 			}
 		}
@@ -243,58 +221,13 @@ func (a *Agent) Run(ctx context.Context) error {
 
 			// WE NEED TO CHECK IF THE CONTENT IS EMPTY AFTER REMOVING CRLF.
 			if content != "" {
-
-				// WE WILL USE THIS NEW FUNCTION THAT WILL HANDLE TOKEN COUNTING.
-				conversation = a.addToConversation(reasonContent, conversation, client.D{
+				conversation = append(conversation, client.D{
 					"role":    "assistant",
-					"content": content,
+					"content": strings.Join(chunks, " "),
 				})
 			}
 		}
 	}
 
 	return nil
-}
-
-// WE WILL ADD THIS NEW FUNCTION THAT WILL ADD MESSAGE TO THE CONVERSATION
-// HISTORY AND CALCULATE THE TOKENS USED IN THE CONVERSATION. IF WE REACH
-// THE CONTEXT WINDOW WE WILL REMOVE THE OLDEST MESSAGES.
-
-// addToConversation will add new messages to the conversation history and
-// calculate the different tokens used in the conversation and display it to the
-// user. It will also check the amount of input tokens currently in history
-// and remove the oldest messages if we are over.
-func (a *Agent) addToConversation(reasoning []string, conversation []client.D, newMessages ...client.D) []client.D {
-	conversation = append(conversation, newMessages...)
-
-	fmt.Print("\n")
-
-	for {
-		var currentWindow int
-		for _, msg := range conversation {
-			currentWindow += a.tke.TokenCount(msg["content"].(string))
-		}
-
-		r := strings.Join(reasoning, " ")
-		reasonTokens := a.tke.TokenCount(r)
-
-		totalTokens := currentWindow + reasonTokens
-		percentage := (float64(currentWindow) / float64(contextWindow)) * 100
-		of := float32(contextWindow) / float32(1024)
-
-		fmt.Printf("\u001b[90mTokens Total[%d] Reason[%d] Window[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, currentWindow, percentage, of)
-
-		// ---------------------------------------------------------------------
-		// Check if we have too many input tokens and start removing messages.
-
-		if currentWindow > contextWindow {
-			fmt.Print("\u001b[90mRemoving conversation history\u001b[0m\n")
-			conversation = slices.Delete(conversation, 1, 2)
-			continue
-		}
-
-		break
-	}
-
-	return conversation
 }

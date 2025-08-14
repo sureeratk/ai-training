@@ -178,6 +178,8 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
 
+	timeForResult := time.NewTicker(100 * time.Millisecond)
+
 	for {
 		// ---------------------------------------------------------------------
 		// If we are not in a tool call then we can ask the user
@@ -201,21 +203,22 @@ func (a *Agent) Run(ctx context.Context) error {
 		// ---------------------------------------------------------------------
 		// Let's show how long we are waiting for the model response.
 
+		wctx, cancelTimer := context.WithCancel(ctx)
+		timeForResult.Reset(100 * time.Millisecond)
 		start := time.Now()
-		t := time.NewTicker(100 * time.Millisecond)
-		wctx, cancel := context.WithCancel(ctx)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
 			for {
 				select {
-				case <-t.C:
+				case <-timeForResult.C:
 					m := time.Since(start).Milliseconds()
 					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", model, m/1000, m%1000)
 
 				case <-wctx.Done():
 					fmt.Print("\n")
-					cancel()
+					timeForResult.Stop()
+					cancelTimer()
 					return
 				}
 			}
@@ -240,12 +243,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", model)
 
 		ch := make(chan client.ChatSSE, 100)
-		ctx, cancelContext := context.WithTimeout(ctx, time.Minute*5)
+		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
 		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
-			cancelContext()
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 			inToolCall = false
+			cancelDoCall()
 			continue
 		}
 
@@ -264,10 +267,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		waitingForResponse := true
 
 		for resp := range ch {
+
+			// Check if this is the first response. If it is, we will shutdown
+			// the G displaying the latency.
 			if waitingForResponse {
-				time.Sleep(time.Second)
 				waitingForResponse = false
-				cancel()
+				cancelTimer()
 				wg.Wait()
 			}
 
@@ -335,7 +340,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 
-		cancelContext()
+		cancelDoCall()
 
 		// ---------------------------------------------------------------------
 		// We processed all the chunks from the response so we need to add

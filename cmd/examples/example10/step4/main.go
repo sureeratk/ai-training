@@ -19,13 +19,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/tiktoken"
 )
 
 const (
@@ -89,7 +87,6 @@ type Tool interface {
 type Agent struct {
 	sseClient      *client.SSEClient[client.ChatSSE]
 	getUserMessage func() (string, bool)
-	tke            *tiktoken.Tiktoken
 
 	// WE NEED TO ADD TOOL SUPPORT TO THE AGENT. WE NEED TO HAVE A SET OF
 	// TOOLS THAT THE AGENT CAN USE TO PERFORM TASKS AND THE CORRESPONDING
@@ -110,11 +107,6 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 	sseClient := client.NewSSE[client.ChatSSE](logger)
 
-	tke, err := tiktoken.NewTiktoken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tiktoken: %w", err)
-	}
-
 	// CONSTRUCT THE TOOLS MAP HERE BECAUSE IT IS PASSED ON TOOL CONSTRUCTION
 	// SO TOOLS CAN REGISTER THEMSELVES IN THIS MAP OF AVAILABLE TOOLS.
 	tools := map[string]Tool{}
@@ -122,7 +114,6 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	agent := Agent{
 		sseClient:      sseClient,
 		getUserMessage: getUserMessage,
-		tke:            tke,
 
 		// ADD THE TOOLNG SUPPORT TO THE AGENT.
 		tools: tools,
@@ -157,7 +148,6 @@ Reasoning: high
 // Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
-	var reasonContent []string
 
 	// WE WILL KEEP TRACK OF WHETHER WE ARE IN A TOOL CALL.
 	var inToolCall bool
@@ -204,11 +194,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
 
 		ch := make(chan client.ChatSSE, 100)
-		ctx, cancelContext := context.WithTimeout(ctx, time.Minute*5)
+		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
 		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
-			cancelContext()
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
+			cancelDoCall()
 			continue
 		}
 
@@ -216,7 +206,6 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		reasonThinking := false  // GPT models provide a Reasoning field.
 		contentThinking := false // Other reasoning models use <think> tags.
-		reasonContent = nil      // Reset the reasoning content for this next call.
 
 		fmt.Print("\n")
 
@@ -268,23 +257,21 @@ func (a *Agent) Run(ctx context.Context) error {
 					chunks = append(chunks, resp.Choices[0].Delta.Content)
 
 				case contentThinking:
-					reasonContent = append(reasonContent, resp.Choices[0].Delta.Content)
 					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
 				}
 
 			case resp.Choices[0].Delta.Reasoning != "":
-				reasonThinking = true
-
-				if len(reasonContent) == 0 {
+				if !reasonThinking {
 					fmt.Print("\n")
 				}
 
-				reasonContent = append(reasonContent, resp.Choices[0].Delta.Reasoning)
+				reasonThinking = true
+
 				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 			}
 		}
 
-		cancelContext()
+		cancelDoCall()
 
 		// WE NEED TO CHECK IF WE ARE IN A TOOL CALL BECAUSE WE NEED TO GIVE THE
 		// MODEL THE RESULTS WITHOUT ANY NOISE. THE CHUNKS SHOULD BE EMPTY IN
@@ -297,54 +284,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			content = strings.TrimLeft(content, "\n")
 
 			if content != "" {
-				conversation = a.addToConversation(reasonContent, conversation, client.D{
+				conversation = append(conversation, client.D{
 					"role":    "assistant",
-					"content": content,
+					"content": strings.Join(chunks, " "),
 				})
 			}
 		}
 	}
 
 	return nil
-}
-
-// addToConversation will add new messages to the conversation history and
-// calculate the different tokens used in the conversation and display it to the
-// user. It will also check the amount of input tokens currently in history
-// and remove the oldest messages if we are over.
-func (a *Agent) addToConversation(reasoning []string, conversation []client.D, newMessages ...client.D) []client.D {
-	conversation = append(conversation, newMessages...)
-
-	fmt.Print("\n")
-
-	for {
-		var currentWindow int
-		for _, msg := range conversation {
-			currentWindow += a.tke.TokenCount(msg["content"].(string))
-		}
-
-		r := strings.Join(reasoning, " ")
-		reasonTokens := a.tke.TokenCount(r)
-
-		totalTokens := currentWindow + reasonTokens
-		percentage := (float64(currentWindow) / float64(contextWindow)) * 100
-		of := float32(contextWindow) / float32(1024)
-
-		fmt.Printf("\u001b[90mTokens Total[%d] Reason[%d] Window[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, currentWindow, percentage, of)
-
-		// ---------------------------------------------------------------------
-		// Check if we have too many input tokens and start removing messages.
-
-		if currentWindow > contextWindow {
-			fmt.Print("\u001b[90mRemoving conversation history\u001b[0m\n")
-			conversation = slices.Delete(conversation, 1, 2)
-			continue
-		}
-
-		break
-	}
-
-	return conversation
 }
 
 // WE NEED A FUNCTION THAT LOOKS UP THE REQUESTED TOOL BY NAME AND CALLS IT
