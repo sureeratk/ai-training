@@ -8,16 +8,85 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
+// WE WILL ADD SUPPORT FOR STRUCTURED TOOL RESPONSES.
+
+// toolSuccessResponse returns a successful structured tool response.
+func toolSuccessResponse(toolID string, toolName string, keyValues ...any) client.D {
+	data := make(map[string]any)
+	for i := 0; i < len(keyValues); i = i + 2 {
+		data[keyValues[i].(string)] = keyValues[i+1]
+	}
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "SUCCESS",
+		Data:   data,
+	}
+
+	content, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(content),
+	}
+}
+
+// toolErrorResponse returns a failed structured tool response.
+func toolErrorResponse(toolID string, toolName string, err error) client.D {
+	data := map[string]any{"error": err.Error()}
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "FAILED",
+		Data:   data,
+	}
+
+	content, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(content),
+	}
+}
+
+// =============================================================================
+
+// WE WILL DEFINE A TYPE FOR THE TOOL.
+
 // GetWeather represents a tool that can be used to get the current weather.
 type GetWeather struct {
 	name string
 }
 
-// NewGetWeather creates a new instance of the GetWeather tool and loads it
+// RegisterGetWeather creates a new instance of the GetWeather tool and loads it
 // into the provided tools map.
-func NewGetWeather(tools map[string]Tool) client.D {
+func RegisterGetWeather(tools map[string]Tool) client.D {
 	gw := GetWeather{
-		name: "tool_get_current_weather",
+		name: "tool_get_weather",
 	}
 	tools[gw.name] = &gw
 
@@ -54,9 +123,9 @@ func (gw *GetWeather) Call(ctx context.Context, toolCall client.ToolCall) (resp 
 		}
 	}()
 
-	// We are going to hardcode a result for now so we can test the tool.
-	// We are going to return the current weather as structured data using JSON
-	// which is easier for the model to interpret.
+	// We are going to hardcode a result for now so we can test the tool. The
+	// data weather will be returned as structured data using JSON which is
+	// easier for the model to interpret.
 
 	location := toolCall.Function.Arguments["location"].(string)
 
@@ -67,10 +136,10 @@ func (gw *GetWeather) Call(ctx context.Context, toolCall client.ToolCall) (resp 
 		"description": fmt.Sprintln("The weather in", location, "is hot and humid"),
 	}
 
-	d, err := json.Marshal(data)
+	content, err := json.Marshal(data)
 	if err != nil {
 		return toolErrorResponse(toolCall.ID, gw.name, err)
 	}
 
-	return toolSuccessResponse(toolCall.ID, gw.name, "weather", string(d))
+	return toolSuccessResponse(toolCall.ID, gw.name, "weather", string(content))
 }

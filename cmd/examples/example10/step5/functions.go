@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/format"
@@ -17,6 +18,69 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
+// toolSuccessResponse returns a successful structured tool response.
+func toolSuccessResponse(toolID string, toolName string, keyValues ...any) client.D {
+	data := make(map[string]any)
+	for i := 0; i < len(keyValues); i = i + 2 {
+		data[keyValues[i].(string)] = keyValues[i+1]
+	}
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "SUCCESS",
+		Data:   data,
+	}
+
+	content, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(content),
+	}
+}
+
+// toolErrorResponse returns a failed structured tool response.
+func toolErrorResponse(toolID string, toolName string, err error) client.D {
+	data := map[string]any{"error": err.Error()}
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "FAILED",
+		Data:   data,
+	}
+
+	content, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(content),
+	}
+}
+
 // =============================================================================
 // ReadFile Tool
 
@@ -25,9 +89,9 @@ type ReadFile struct {
 	name string
 }
 
-// NewReadFile creates a new instance of the ReadFile tool and loads it
+// RegisterReadFile creates a new instance of the ReadFile tool and loads it
 // into the provided tools map.
-func NewReadFile(tools map[string]Tool) client.D {
+func RegisterReadFile(tools map[string]Tool) client.D {
 	rf := ReadFile{
 		name: "tool_read_file",
 	}
@@ -87,9 +151,9 @@ type SearchFiles struct {
 	name string
 }
 
-// NewSearchFiles creates a new instance of the SearchFiles tool and loads it
+// RegisterSearchFiles creates a new instance of the SearchFiles tool and loads it
 // into the provided tools map.
-func NewSearchFiles(tools map[string]Tool) client.D {
+func RegisterSearchFiles(tools map[string]Tool) client.D {
 	sf := SearchFiles{
 		name: "tool_search_files",
 	}
@@ -225,9 +289,9 @@ type CreateFile struct {
 	name string
 }
 
-// NewCreateFile creates a new instance of the CreateFile tool and loads it
+// RegisterCreateFile creates a new instance of the CreateFile tool and loads it
 // into the provided tools map.
-func NewCreateFile(tools map[string]Tool) client.D {
+func RegisterCreateFile(tools map[string]Tool) client.D {
 	cf := CreateFile{
 		name: "tool_create_file",
 	}
@@ -294,9 +358,9 @@ type GoCodeEditor struct {
 	name string
 }
 
-// NewGoCodeEditor creates a new instance of the GoCodeEditor tool and loads it
-// into the provided tools map.
-func NewGoCodeEditor(tools map[string]Tool) client.D {
+// RegisterGoCodeEditor creates a new instance of the GoCodeEditor tool and
+// loads it into the provided tools map.
+func RegisterGoCodeEditor(tools map[string]Tool) client.D {
 	gce := GoCodeEditor{
 		name: "tool_go_code_editor",
 	}

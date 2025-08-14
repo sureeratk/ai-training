@@ -16,7 +16,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -137,10 +136,10 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		toolDocuments: []client.D{
 
 			// WE NEED TO REGISTER THE NEW TOOLS WE HAVE CREATED.
-			NewReadFile(tools),
-			NewSearchFiles(tools),
-			NewCreateFile(tools),
-			NewGoCodeEditor(tools),
+			RegisterReadFile(tools),
+			RegisterSearchFiles(tools),
+			RegisterCreateFile(tools),
+			RegisterGoCodeEditor(tools),
 		},
 	}
 
@@ -387,71 +386,4 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 	}
 
 	return conversation
-}
-
-// =============================================================================
-
-// toolSuccessResponse returns a successful structured tool response.
-func toolSuccessResponse(toolID string, toolName string, values ...any) client.D {
-	data := make(map[string]any)
-	for i := 0; i < len(values); i = i + 2 {
-		data[values[i].(string)] = values[i+1]
-	}
-
-	info := struct {
-		Status string         `json:"status"`
-		Data   map[string]any `json:"data"`
-	}{
-		Status: "SUCCESS",
-		Data:   data,
-	}
-
-	json, err := json.Marshal(info)
-	if err != nil {
-		return client.D{
-			"role":         "tool",
-			"tool_call_id": toolID,
-			"tool_name":    toolName,
-			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
-		}
-	}
-
-	return client.D{
-		"role":         "tool",
-		"tool_call_id": toolID,
-		"tool_name":    toolName,
-		"content":      string(json),
-	}
-}
-
-// toolErrorResponse returns a failed structured tool response.
-func toolErrorResponse(toolID string, toolName string, err error) client.D {
-	data := map[string]any{"error": err.Error()}
-
-	info := struct {
-		Status string         `json:"status"`
-		Data   map[string]any `json:"data"`
-	}{
-		Status: "FAILED",
-		Data:   data,
-	}
-
-	json, err := json.Marshal(info)
-	if err != nil {
-		return client.D{
-			"role":         "tool",
-			"tool_call_id": toolID,
-			"tool_name":    toolName,
-			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
-		}
-	}
-
-	content := string(json)
-
-	return client.D{
-		"role":         "tool",
-		"tool_call_id": toolID,
-		"tool_name":    toolName,
-		"content":      content,
-	}
 }
