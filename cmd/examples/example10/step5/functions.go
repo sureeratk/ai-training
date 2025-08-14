@@ -25,41 +25,23 @@ func toolSuccessResponse(toolID string, toolName string, keyValues ...any) clien
 		data[keyValues[i].(string)] = keyValues[i+1]
 	}
 
-	info := struct {
-		Status string         `json:"status"`
-		Data   map[string]any `json:"data"`
-	}{
-		Status: "SUCCESS",
-		Data:   data,
-	}
-
-	content, err := json.Marshal(info)
-	if err != nil {
-		return client.D{
-			"role":         "tool",
-			"tool_call_id": toolID,
-			"tool_name":    toolName,
-			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
-		}
-	}
-
-	return client.D{
-		"role":         "tool",
-		"tool_call_id": toolID,
-		"tool_name":    toolName,
-		"content":      string(content),
-	}
+	return toolResponse(toolID, toolName, data, "SUCCESS")
 }
 
 // toolErrorResponse returns a failed structured tool response.
 func toolErrorResponse(toolID string, toolName string, err error) client.D {
 	data := map[string]any{"error": err.Error()}
 
+	return toolResponse(toolID, toolName, data, "FAILED")
+}
+
+// toolResponse creates a structured tool response.
+func toolResponse(toolID string, toolName string, data map[string]any, status string) client.D {
 	info := struct {
 		Status string         `json:"status"`
 		Data   map[string]any `json:"data"`
 	}{
-		Status: "FAILED",
+		Status: status,
 		Data:   data,
 	}
 

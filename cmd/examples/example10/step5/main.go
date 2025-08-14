@@ -328,27 +328,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
-// callTools will lookup a requested tool by name and call it.
-func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
-	var resps []client.D
-
-	for _, toolCall := range toolCalls {
-		tool, exists := a.tools[toolCall.Function.Name]
-		if !exists {
-			continue
-		}
-
-		fmt.Printf("\u001b[92mtool: %s(%v)\u001b[0m:\n", toolCall.Function.Name, toolCall.Function.Arguments)
-
-		resp := tool.Call(ctx, toolCall)
-		resps = append(resps, resp)
-
-		fmt.Printf("%#v\n", resps)
-	}
-
-	return resps
-}
-
 // addToConversation will add new messages to the conversation history and
 // calculate the different tokens used in the conversation and display it to the
 // user. It will also check the amount of input tokens currently in history
@@ -386,4 +365,25 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 	}
 
 	return conversation
+}
+
+// callTools will lookup a requested tool by name and call it.
+func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
+	var resps []client.D
+
+	for _, toolCall := range toolCalls {
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
+		}
+
+		fmt.Printf("\u001b[92mtool: %s(%v)\u001b[0m:\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
+		resp := tool.Call(ctx, toolCall)
+		resps = append(resps, resp)
+
+		fmt.Printf("%#v\n", resps)
+	}
+
+	return resps
 }
