@@ -40,6 +40,7 @@ ollama-pull:
 	ollama pull bge-m3:latest
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
+	ollama pull hf.co/gpustack/bge-reranker-v2-m3-GGUF:Q8_0
 
 python-install:
 	rm -rf .venv
