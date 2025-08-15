@@ -46,9 +46,14 @@ python-install:
 	uv venv --python 3.12 && uv lock && uv sync
 
 # ==============================================================================
-# Examples
+# Ollama Settings
 
 OLLAMA_CONTEXT_LENGTH := 65536
+OLLAMA_NUM_PARALLEL :=4
+OLLAMA_MAX_LOADED_MODELS :=2
+
+# ==============================================================================
+# Examples
 
 example01:
 	go run cmd/examples/example01/main.go
@@ -137,7 +142,10 @@ compose-logs:
 # Ollama tooling
 
 ollama-up:
-	OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) ollama serve
+	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
+	export OLLAMA_MAX_LOADED_MODELS=$(OLLAMA_MAX_LOADED_MODELS) && \
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	ollama serve
 
 ollama-logs:
 	tail -f -n 100 ~/.ollama/logs/server.log
