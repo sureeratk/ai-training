@@ -30,7 +30,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -98,11 +97,10 @@ func createEmbeddings(ctx context.Context) error {
 	cln := client.New(client.StdoutLogger)
 
 	// Open the book file with the pre-processed chunks.
-	input, err := os.Open("zarf/data/book.chunks")
+	data, err := os.ReadFile("zarf/data/book.chunks")
 	if err != nil {
-		return fmt.Errorf("open file: %w", err)
+		return fmt.Errorf("read file: %w", err)
 	}
-	defer input.Close()
 
 	// Create the embeddings.
 	output, err := os.Create("zarf/data/book.embeddings")
@@ -113,11 +111,6 @@ func createEmbeddings(ctx context.Context) error {
 
 	fmt.Print("\n")
 	fmt.Print("\033[s")
-
-	data, err := io.ReadAll(input)
-	if err != nil {
-		return fmt.Errorf("read file: %w", err)
-	}
 
 	r := regexp.MustCompile(`<CHUNK>[\w\W]*?<\/CHUNK>`)
 	chunks := r.FindAllString(string(data), -1)

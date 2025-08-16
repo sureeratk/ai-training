@@ -14,11 +14,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
@@ -131,26 +129,15 @@ func run() error {
 }
 
 func readImage(fileName string) ([]byte, string, error) {
-	f, err := os.OpenFile(fileName, os.O_RDONLY, 0)
-	if err != nil {
-		return nil, "", fmt.Errorf("open file: %w", err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
+	data, err := os.ReadFile(fileName)
 	if err != nil {
 		return nil, "", fmt.Errorf("read file: %w", err)
 	}
 
-	var mimeType string
-	switch filepath.Ext(fileName) {
-	case ".jpg", ".jpeg":
-		mimeType = "image/jpg"
-	case ".png":
-		mimeType = "image/png"
+	switch mimeType := http.DetectContentType(data); mimeType {
+	case "image/jpeg", "image/png":
+		return data, mimeType, nil
 	default:
-		return nil, "", fmt.Errorf("unsupported file type: %s", filepath.Ext(fileName))
+		return nil, "", fmt.Errorf("unsupported file type:%s: filename: %s", mimeType, fileName)
 	}
-
-	return data, mimeType, nil
 }
