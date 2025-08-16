@@ -13,26 +13,28 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
-	url            = "http://localhost:11434"
-	model          = "qwen2.5vl:latest"
+	urlChat        = "http://localhost:11434/v1/chat/completions"
+	urlEmbedding   = "http://localhost:11434/v1/embeddings"
+	modelChat      = "qwen2.5vl:latest"
+	modelEmbedding = "bge-m3:latest"
 	imagePath      = "cmd/samples/gallery/roseimg.png"
-	embedModel     = "bge-m3:latest"
 	dbName         = "example9"
 	collectionName = "images-3"
 )
@@ -40,7 +42,7 @@ const (
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
-	Embedding   []float32 `bson:"embedding"`
+	Embedding   []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -56,21 +58,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
-
-	llmEmbed, err := ollama.New(
-		ollama.WithModel(embedModel),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
+	cln := client.New(client.StdoutLogger)
 
 	// -------------------------------------------------------------------------
 
@@ -119,44 +107,60 @@ func run() error {
 		Make sure the JSON is valid, doesn't have any extra spaces, and is
 		properly formatted.`
 
-	messages := []llms.MessageContent{
-		{
-			Role: llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{
-				llms.BinaryContent{
-					MIMEType: mimeType,
-					Data:     data,
-				},
-				llms.TextContent{
-					Text: prompt,
+	dataBase64 := base64.StdEncoding.EncodeToString(data)
+
+	d := client.D{
+		"model": modelChat,
+		"messages": []client.D{
+			{
+				"role": "user",
+				"content": []client.D{
+					{
+						"type": "text",
+						"text": prompt,
+					},
+					{
+						"type": "image_url",
+						"image_url": client.D{
+							"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
+						},
+					},
 				},
 			},
 		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
 	}
 
-	cr, err := llm.GenerateContent(
-		ctx,
-		messages,
-		llms.WithMaxTokens(500),
-		llms.WithTemperature(1.0),
-	)
-	if err != nil {
-		return fmt.Errorf("generate content: %w", err)
+	var result client.Chat
+	if err := cln.Do(ctx, http.MethodPost, urlChat, d, &result); err != nil {
+		return fmt.Errorf("do: %w", err)
 	}
 
-	fmt.Print(cr.Choices[0].Content)
+	fmt.Print(result.Choices[0].Message.Content)
 	fmt.Print("\n\n")
 
 	// ---------------------------------------------------------------------
 
 	fmt.Print("Generate embeddings for the image description:\n\n")
 
-	vectors, err := llmEmbed.CreateEmbedding(ctx, []string{cr.Choices[0].Content})
-	if err != nil {
-		return fmt.Errorf("create embedding: %w", err)
+	d = client.D{
+		"model":              modelEmbedding,
+		"truncate":           true,
+		"truncate_direction": "right",
+		"input":              result.Choices[0].Message.Content,
 	}
 
-	fmt.Printf("%v...%v\n\n", vectors[0][0:3], vectors[0][len(vectors[0])-3:])
+	// Get the vector embedding for this question.
+	var resp client.Embedding
+	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+
+	vector := resp.Data[0].Embedding
+
+	fmt.Printf("%v...%v\n\n", vector[0:3], vector[len(vector)-3:])
 
 	// ---------------------------------------------------------------------
 
@@ -164,8 +168,8 @@ func run() error {
 
 	d1 := document{
 		FileName:    imagePath,
-		Description: cr.Choices[0].Content,
-		Embedding:   vectors[0],
+		Description: result.Choices[0].Message.Content,
+		Embedding:   vector,
 	}
 
 	res, err := col.InsertOne(ctx, d1)

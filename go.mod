@@ -8,7 +8,6 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/modelcontextprotocol/go-sdk v0.2.0
-	github.com/tmc/langchaingo v0.1.13
 	go.mongodb.org/mongo-driver v1.17.4
 	golang.org/x/text v0.28.0
 )
@@ -25,7 +24,6 @@ require (
 	github.com/gigawattio/window v0.0.0-20180317192513-0f5467e35573 // indirect
 	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
@@ -41,11 +39,11 @@ require (
 	github.com/olekukonko/tablewriter v1.0.9 // indirect
 	github.com/otiai10/gosseract/v2 v2.4.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pkoukk/tiktoken-go v0.1.7 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
@@ -56,5 +54,4 @@ require (
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )

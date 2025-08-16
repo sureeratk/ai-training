@@ -10,7 +10,7 @@ import "math"
 
 // Data represents data that can be vectorized.
 type Data interface {
-	Vector() []float32
+	Vector() []float64
 }
 
 // =============================================================================
@@ -20,8 +20,8 @@ type Data interface {
 type SimilarityResult struct {
 	Target     Data
 	DataPoint  Data
-	Similarity float32
-	Percentage float32
+	Similarity float64
+	Percentage float64
 }
 
 // Similarity calculates the similarity between two vectors.
@@ -46,20 +46,38 @@ func Similarity(target Data, dataPoints ...Data) []SimilarityResult {
 
 // CosineSimilarity takes two vectors and computes the similarity between
 // them using a cosine algorithm.
-func CosineSimilarity(x, y []float32) float32 {
+func CosineSimilarity(x, y []float64) float64 {
 	var sum, s1, s2 float64
 
-	for i := 0; i < len(x); i++ {
-		sum += float64(x[i] * y[i])
-		s1 += float64(x[i] * x[i])
-		s2 += float64(y[i] * y[i])
+	for i := range x {
+		sum += x[i] * y[i]
+		s1 += x[i] * x[i]
+		s2 += y[i] * y[i]
 	}
 
 	if s1 == 0 || s2 == 0 {
 		return 0.0
 	}
 
-	return float32(sum / (math.Sqrt(s1) * math.Sqrt(s2)))
+	return sum / (math.Sqrt(s1) * math.Sqrt(s2))
+}
+
+// CosineSimilarity32 takes two vectors and computes the similarity between
+// them using a cosine algorithm.
+func CosineSimilarity32(x, y []float32) float32 {
+	var sum, s1, s2 float32
+
+	for i := range x {
+		sum += x[i] * y[i]
+		s1 += x[i] * x[i]
+		s2 += y[i] * y[i]
+	}
+
+	if s1 == 0 || s2 == 0 {
+		return 0.0
+	}
+
+	return sum / float32((math.Sqrt(float64(s1)) * math.Sqrt(float64(s2))))
 }
 
 // =============================================================================
@@ -71,7 +89,7 @@ const (
 )
 
 // Add calculates the addition of two vectors.
-func Add(a, b []float32) []float32 {
+func Add(a, b []float64) []float64 {
 	dimA, dimB := len(a), len(b)
 
 	if (dimA == 1 || dimA == 2 || dimA == 3) && dimB == 1 {
@@ -104,7 +122,7 @@ func Add(a, b []float32) []float32 {
 }
 
 // Sub calculates the subtraction of two vectors.
-func Sub(a, b []float32) []float32 {
+func Sub(a, b []float64) []float64 {
 	dimA, dimB := len(a), len(b)
 
 	if (dimA == 1 || dimA == 2 || dimA == 3) && dimB == 1 {
@@ -141,7 +159,7 @@ func Sub(a, b []float32) []float32 {
 	return a
 }
 
-func axpyUnitaryTo(dst []float32, alpha float32, x, y []float32) {
+func axpyUnitaryTo(dst []float64, alpha float64, x, y []float64) {
 	dim := len(y)
 	for i, v := range x {
 		if i == dim {

@@ -12,11 +12,13 @@ type D map[string]any
 // =============================================================================
 
 type Error struct {
-	Message string `json:"error"`
+	Err struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 func (err *Error) Error() string {
-	return err.Message
+	return err.Err.Message
 }
 
 // =============================================================================
@@ -126,4 +128,20 @@ type Chat struct {
 	Created Time         `json:"created"`
 	Model   string       `json:"model"`
 	Choices []ChatChoice `json:"choices"`
+}
+
+// =============================================================================
+
+type EmbeddingData struct {
+	Index     int       `json:"index"`
+	Object    string    `json:"object"`
+	Embedding []float64 `json:"embedding"`
+}
+
+type Embedding struct {
+	ID      string          `json:"id"`
+	Object  string          `json:"object"`
+	Created Time            `json:"created"`
+	Model   string          `json:"model"`
+	Data    []EmbeddingData `json:"data"`
 }

@@ -20,20 +20,22 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 const (
-	url   = "http://localhost:11434"
-	model = "bge-m3:latest"
+	urlChat        = "http://localhost:11434/v1/chat/completions"
+	urlEmbedding   = "http://localhost:11434/v1/embeddings"
+	modelChat      = "qwen2.5vl:latest"
+	modelEmbedding = "bge-m3:latest"
 )
 
 type searchResult struct {
@@ -82,19 +84,21 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 	// -------------------------------------------------------------------------
 	// Use ollama to generate a vector embedding for the question.
 
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
+	// Construct the http client for interacting with the Ollama.
+	cln := client.New(client.StdoutLogger)
+
+	// Define the request for the embedding.
+	d := client.D{
+		"model":              modelEmbedding,
+		"truncate":           true,
+		"truncate_direction": "right",
+		"input":              question,
 	}
 
-	// Get the vector embedding for the question.
-	embedding, err := llm.CreateEmbedding(ctx, []string{question})
-	if err != nil {
-		return nil, fmt.Errorf("create embedding: %w", err)
+	// Get the vector embedding for this question.
+	var resp client.Embedding
+	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
+		return nil, fmt.Errorf("do: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
@@ -124,7 +128,7 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 				"index":       "vector_index",
 				"exact":       true,
 				"path":        "embedding",
-				"queryVector": embedding[0],
+				"queryVector": resp.Data[0].Embedding,
 				"limit":       5,
 			}},
 		},
@@ -157,14 +161,8 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 
 func questionResponse(ctx context.Context, question string, results []searchResult) error {
 
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel("qwen2.5vl:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
+	// Construct the http client for interacting with the Ollama.
+	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
 	// Format a prompt to direct the model what to do with the content and
 	// the question.
@@ -203,24 +201,29 @@ Question: %s
 
 	finalPrompt := fmt.Sprintf(prompt, content, question)
 
-	// This function will display the response as it comes from the server.
-	f := func(ctx context.Context, chunk []byte) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		fmt.Printf("%s", chunk)
-		return nil
+	d := client.D{
+		"model": modelChat,
+		"messages": []client.D{
+			{
+				"role":    "user",
+				"content": finalPrompt,
+			},
+		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
+		"stream":      true,
 	}
 
-	// Send the prompt to the model server.
-	_, err = llm.Call(
-		ctx,
-		finalPrompt,
-		llms.WithStreamingFunc(f),
-		llms.WithMaxTokens(1000))
-	if err != nil {
-		return fmt.Errorf("call: %w", err)
+	ch := make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+
+	fmt.Print("Model Response:\n\n")
+
+	for resp := range ch {
+		fmt.Print(resp.Choices[0].Delta.Content)
 	}
 
 	return nil

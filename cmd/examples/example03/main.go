@@ -182,7 +182,7 @@ func testModel() error {
 			return err
 		}
 
-		v := vector.CosineSimilarity(word1[:], word2[:])
+		v := vector.CosineSimilarity32(word1[:], word2[:])
 
 		fmt.Printf("The cosine similarity between the word %q and %q: %.3f%%\n", words[i], words[i+1], v*100)
 	}

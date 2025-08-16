@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -34,7 +35,17 @@ var defaultClient = http.Client{
 	},
 }
 
+// =============================================================================
+
 type Logger func(context.Context, string, ...any)
+
+var StdoutLogger = func(ctx context.Context, msg string, v ...any) {
+	s := fmt.Sprintf("msg: %s", msg)
+	for i := 0; i < len(v); i = i + 2 {
+		s = s + fmt.Sprintf(", %s: %v", v[i], v[i+1])
+	}
+	log.Println(s)
+}
 
 // =============================================================================
 
@@ -194,7 +205,7 @@ func do(ctx context.Context, cln *Client, method string, endpoint string, body a
 				return nil, fmt.Errorf("decoding: response: %s, error: %w ", string(data), err)
 			}
 
-			return nil, fmt.Errorf("error: response: %s", err.Message)
+			return nil, fmt.Errorf("error: status: %d response: %s", statusCode, err.Err.Message)
 		}
 	}
 }

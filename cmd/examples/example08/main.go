@@ -20,18 +20,18 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/sqldb"
 	"github.com/jmoiron/sqlx"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
 )
 
 const (
-	url   = "http://localhost:11434"
+	url   = "http://localhost:11434/v1/chat/completions"
 	model = "qwen2.5vl:latest"
 )
 
@@ -52,6 +52,8 @@ func run() error {
 
 	defer db.Close()
 
+	cln := client.New(client.StdoutLogger)
+
 	// -------------------------------------------------------------------------
 
 	reader := bufio.NewReader(os.Stdin)
@@ -66,7 +68,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	query, err := getQuery(ctx, question)
+	query, err := getQuery(ctx, cln, question)
 	if err != nil {
 		return fmt.Errorf("getQuery: %w", err)
 	}
@@ -96,7 +98,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	answer, err := getResponse(ctx, question, data)
+	answer, err := getResponse(ctx, cln, question, data)
 	if err != nil {
 		return fmt.Errorf("getQuery: %w", err)
 	}
@@ -117,36 +119,29 @@ var (
 	response string
 )
 
-func getQuery(ctx context.Context, question string) (string, error) {
-
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return "", fmt.Errorf("ollama: %w", err)
+func getQuery(ctx context.Context, cln *client.Client, question string) (string, error) {
+	d := client.D{
+		"model": model,
+		"messages": []client.D{
+			{
+				"role":    "user",
+				"content": fmt.Sprintf(query, question),
+			},
+		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
 	}
 
-	prompt := fmt.Sprintf(query, question)
-
-	result, err := llm.Call(ctx, prompt)
-	if err != nil {
-		return "", fmt.Errorf("call: %w", err)
+	var result client.Chat
+	if err := cln.Do(ctx, http.MethodPost, url, d, &result); err != nil {
+		return "", fmt.Errorf("do: %w", err)
 	}
 
-	return result, nil
+	return result.Choices[0].Message.Content, nil
 }
 
-func getResponse(ctx context.Context, question string, data []map[string]any) (string, error) {
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return "", fmt.Errorf("ollama: %w", err)
-	}
-
+func getResponse(ctx context.Context, cln *client.Client, question string, data []map[string]any) (string, error) {
 	var builder strings.Builder
 	for i, m := range data {
 		builder.WriteString(fmt.Sprintf("RESULT: %d\n", i+1))
@@ -156,14 +151,25 @@ func getResponse(ctx context.Context, question string, data []map[string]any) (s
 		builder.WriteString("\n")
 	}
 
-	prompt := fmt.Sprintf(response, builder.String(), question)
-
-	result, err := llm.Call(ctx, prompt, llms.WithMaxTokens(1000))
-	if err != nil {
-		return "", fmt.Errorf("call: %w", err)
+	d := client.D{
+		"model": model,
+		"messages": []client.D{
+			{
+				"role":    "user",
+				"content": fmt.Sprintf(response, builder.String(), question),
+			},
+		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
 	}
 
-	return result, nil
+	var result client.Chat
+	if err := cln.Do(ctx, http.MethodPost, url, d, &result); err != nil {
+		return "", fmt.Errorf("do: %w", err)
+	}
+
+	return result.Choices[0].Message.Content, nil
 }
 
 // =============================================================================

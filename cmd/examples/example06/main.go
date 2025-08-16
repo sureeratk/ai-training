@@ -32,20 +32,21 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/tmc/langchaingo/llms/ollama"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
-	url   = "http://localhost:11434"
+	url   = "http://localhost:11434/v1/embeddings"
 	model = "bge-m3:latest"
 )
 
@@ -54,7 +55,7 @@ const (
 type document struct {
 	ID        int       `bson:"id"`
 	Text      string    `bson:"text"`
-	Embedding []float32 `bson:"embedding"`
+	Embedding []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -66,12 +67,12 @@ func main() {
 }
 
 func run() error {
-	if err := createEmbeddings(); err != nil {
-		return fmt.Errorf("createEmbeddings: %w", err)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	if err := createEmbeddings(ctx); err != nil {
+		return fmt.Errorf("createEmbeddings: %w", err)
+	}
 
 	col, err := setupDatabase(ctx)
 	if err != nil {
@@ -85,22 +86,16 @@ func run() error {
 	return nil
 }
 
-func createEmbeddings() error {
-	fmt.Println("\nCreated Embeddings")
+func createEmbeddings(ctx context.Context) error {
+	fmt.Println("\nCreate Embeddings")
 
 	// If the embeddings already exist, we don't need to do this again.
 	if _, err := os.Stat("zarf/data/book.embeddings"); err == nil {
 		return nil
 	}
 
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel("bge-m3:latest"),
-		ollama.WithServerURL("http://localhost:11434"),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
+	// Construct the http client for interacting with the Ollama.
+	cln := client.New(client.StdoutLogger)
 
 	// Open the book file with the pre-processed chunks.
 	input, err := os.Open("zarf/data/book.chunks")
@@ -143,17 +138,25 @@ func createEmbeddings() error {
 		// TOKENS. THERE IS A TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH
 		// THIS.
 
+		// Define the request for the embedding.
+		d := client.D{
+			"model":              model,
+			"truncate":           true,
+			"truncate_direction": "right",
+			"input":              chunk,
+		}
+
 		// Get the vector embedding for this chunk.
-		embedding, err := llm.CreateEmbedding(context.Background(), []string{chunk})
-		if err != nil {
-			return fmt.Errorf("create embedding: %w", err)
+		var resp client.Embedding
+		if err := cln.Do(ctx, http.MethodPost, url, d, &resp); err != nil {
+			return fmt.Errorf("do: %w", err)
 		}
 
 		// Create the document with the vector embedding.
 		doc := document{
 			ID:        counter,
 			Text:      chunk,
-			Embedding: embedding[0],
+			Embedding: resp.Data[0].Embedding,
 		}
 
 		// Convert to json.

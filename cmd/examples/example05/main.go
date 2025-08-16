@@ -15,14 +15,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
 const (
-	url   = "http://localhost:11434"
+	url   = "http://localhost:11434/v1/chat/completions"
 	model = "qwen2.5vl:latest"
 )
 
@@ -33,26 +33,11 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := questionResponse(ctx); err != nil {
-		return fmt.Errorf("storeDocuments: %w", err)
-	}
-
-	return nil
-}
-
-func questionResponse(ctx context.Context) error {
-
-	// Open a connection with ollama to access the model.
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
+	// Construct the http streaming client for interacting with the Ollama.
+	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
 	// Format a prompt to direct the model what to do with the content and
 	// the question.
@@ -95,27 +80,29 @@ func questionResponse(ctx context.Context) error {
 
 	finalPrompt := fmt.Sprintf(prompt, content, question)
 
-	// This function will display the response as it comes from the server.
-	f := func(ctx context.Context, chunk []byte) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		fmt.Printf("%s", chunk)
-		return nil
+	d := client.D{
+		"model": model,
+		"messages": []client.D{
+			{
+				"role":    "user",
+				"content": finalPrompt,
+			},
+		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
+		"stream":      true,
 	}
 
-	fmt.Print("\nModel Response:\n\n")
+	ch := make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
 
-	// Send the prompt to the model server.
-	_, err = llm.Call(
-		ctx,
-		finalPrompt,
-		llms.WithStreamingFunc(f),
-		llms.WithMaxTokens(1000),
-	)
-	if err != nil {
-		return fmt.Errorf("call: %w", err)
+	fmt.Print("Model Response:\n\n")
+
+	for resp := range ch {
+		fmt.Print(resp.Choices[0].Delta.Content)
 	}
 
 	return nil

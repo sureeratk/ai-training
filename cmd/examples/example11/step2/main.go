@@ -119,15 +119,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	// -------------------------------------------------------------------------
 	// Construct the SSE client to make model calls.
 
-	logger := func(ctx context.Context, msg string, v ...any) {
-		s := fmt.Sprintf("msg: %s", msg)
-		for i := 0; i < len(v); i = i + 2 {
-			s = s + fmt.Sprintf(", %s: %v", v[i], v[i+1])
-		}
-		log.Println(s)
-	}
-
-	sseClient := client.NewSSE[client.ChatSSE](logger)
+	sseClient := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
 	// -------------------------------------------------------------------------
 	// Construct the mcp client.

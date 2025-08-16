@@ -40,9 +40,6 @@ github.com/go-resty/resty/v2/shellescape
 # github.com/golang/snappy v1.0.0
 ## explicit
 github.com/golang/snappy
-# github.com/google/uuid v1.6.0
-## explicit
-github.com/google/uuid
 # github.com/jackc/pgpassfile v1.0.0
 ## explicit; go 1.12
 github.com/jackc/pgpassfile
@@ -128,9 +125,6 @@ github.com/otiai10/gosseract/v2
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pkoukk/tiktoken-go v0.1.7
-## explicit; go 1.19
-github.com/pkoukk/tiktoken-go
 # github.com/richardlehane/mscfb v1.0.4
 ## explicit
 github.com/richardlehane/mscfb
@@ -144,13 +138,8 @@ github.com/rivo/uniseg
 # github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf
 ## explicit
 github.com/ssor/bom
-# github.com/tmc/langchaingo v0.1.13
-## explicit; go 1.22.0
-github.com/tmc/langchaingo/callbacks
-github.com/tmc/langchaingo/llms
-github.com/tmc/langchaingo/llms/ollama
-github.com/tmc/langchaingo/llms/ollama/internal/ollamaclient
-github.com/tmc/langchaingo/schema
+# github.com/stretchr/testify v1.9.0
+## explicit; go 1.17
 # github.com/xdg-go/pbkdf2 v1.0.0
 ## explicit; go 1.9
 github.com/xdg-go/pbkdf2
@@ -290,5 +279,3 @@ google.golang.org/protobuf/reflect/protoreflect
 google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
-# sigs.k8s.io/yaml v1.4.0
-## explicit; go 1.12

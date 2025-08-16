@@ -81,16 +81,8 @@ type Agent struct {
 
 // NewAgent creates a new instance of Agent.
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
-	logger := func(ctx context.Context, msg string, v ...any) {
-		s := fmt.Sprintf("msg: %s", msg)
-		for i := 0; i < len(v); i = i + 2 {
-			s = s + fmt.Sprintf(", %s: %v", v[i], v[i+1])
-		}
-		log.Println(s)
-	}
-
 	agent := Agent{
-		sseClient:      client.NewSSE[client.ChatSSE](logger),
+		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
 		getUserMessage: getUserMessage,
 	}
 

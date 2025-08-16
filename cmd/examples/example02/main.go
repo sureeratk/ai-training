@@ -22,13 +22,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/vector"
-	"github.com/tmc/langchaingo/llms/ollama"
 )
 
 const (
-	url   = "http://localhost:11434"
+	url   = "http://localhost:11434/v1/embeddings"
 	model = "bge-m3:latest"
 )
 
@@ -37,24 +39,28 @@ const (
 type data struct {
 	Name      string
 	Text      string
-	Embedding []float32 // The vector where the data is embedded in space.
+	Embedding []float64 // The vector where the data is embedded in space.
 }
 
 // Vector can convert the specified data into a vector.
-func (d data) Vector() []float32 {
+func (d data) Vector() []float64 {
 	return d.Embedding
 }
 
 // =============================================================================
 
 func main() {
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Construct the http client for interacting with the Ollama.
+	cln := client.New(client.StdoutLogger)
 
 	// -------------------------------------------------------------------------
 
@@ -84,15 +90,24 @@ func main() {
 	for i, dp := range dataPoints {
 		dataPoint := dp.(data)
 
-		vectors, err := llm.CreateEmbedding(context.Background(), []string{dataPoint.Text})
-		if err != nil {
-			log.Fatal(err)
+		d := client.D{
+			"model":              model,
+			"truncate":           true,
+			"truncate_direction": "right",
+			"input":              dataPoint.Text,
 		}
 
-		dataPoint.Embedding = vectors[0]
+		var resp client.Embedding
+		if err := cln.Do(ctx, http.MethodPost, url, d, &resp); err != nil {
+			return fmt.Errorf("do: %w", err)
+		}
+
+		vector := resp.Data[0].Embedding
+
+		dataPoint.Embedding = vector
 		dataPoints[i] = dataPoint
 
-		fmt.Printf("Vector: Name(%s) len(%d) %v...%v\n", dataPoint.Name, len(vectors[0]), vectors[0][0:2], vectors[0][len(vectors[0])-2:])
+		fmt.Printf("Vector: Name(%s) len(%d) %v...%v\n", dataPoint.Name, len(vector), vector[0:2], vector[len(vector)-2:])
 	}
 
 	fmt.Print("\n")
@@ -125,4 +140,6 @@ func main() {
 	// Now compare a (King - Man + Woman) to a Queen.
 	result := vector.CosineSimilarity(kingSubManPlusWoman, queen)
 	fmt.Printf("King - Man + Woman ~= Queen similarity: %.2f%%\n", result*100)
+
+	return nil
 }

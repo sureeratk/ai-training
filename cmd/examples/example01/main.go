@@ -41,16 +41,16 @@ import (
 
 type data struct {
 	Name      string
-	Authority float32 // These fields are called features.
-	Animal    float32
-	Human     float32
-	Rich      float32
-	Gender    float32
+	Authority float64 // These fields are called features.
+	Animal    float64
+	Human     float64
+	Rich      float64
+	Gender    float64
 }
 
 // Vector can convert the specified data into a vector.
-func (d data) Vector() []float32 {
-	return []float32{
+func (d data) Vector() []float64 {
+	return []float64{
 		d.Authority,
 		d.Animal,
 		d.Human,

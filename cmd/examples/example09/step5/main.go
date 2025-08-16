@@ -13,26 +13,28 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
-	url            = "http://localhost:11434"
-	model          = "qwen2.5vl:latest"
-	embedModel     = "bge-m3:latest"
+	urlChat        = "http://localhost:11434/v1/chat/completions"
+	urlEmbedding   = "http://localhost:11434/v1/embeddings"
+	modelChat      = "qwen2.5vl:latest"
+	modelEmbedding = "bge-m3:latest"
 	dbName         = "example9"
 	collectionName = "images-5"
 	gallaryPath    = "cmd/samples/gallery/"
@@ -41,13 +43,13 @@ const (
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
-	Embedding   []float32 `bson:"embedding"`
+	Embedding   []float64 `bson:"embedding"`
 }
 
 type searchResult struct {
 	FileName    string    `bson:"file_name" json:"file_name"`
 	Description string    `bson:"description" json:"image_description"`
-	Embedding   []float32 `bson:"embedding" json:"-"`
+	Embedding   []float64 `bson:"embedding" json:"-"`
 	Score       float64   `bson:"score" json:"-"`
 }
 
@@ -64,21 +66,8 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llm, err := ollama.New(
-		ollama.WithModel(model),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
-
-	llmEmbed, err := ollama.New(
-		ollama.WithModel(embedModel),
-		ollama.WithServerURL(url),
-	)
-	if err != nil {
-		return fmt.Errorf("ollama: %w", err)
-	}
+	cln := client.New(client.StdoutLogger)
+	clnSSE := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
 	// -------------------------------------------------------------------------
 
@@ -130,39 +119,55 @@ func run() error {
 
 		fmt.Println("  - Generating image description")
 
-		messages := []llms.MessageContent{
-			{
-				Role: llms.ChatMessageTypeHuman,
-				Parts: []llms.ContentPart{
-					llms.BinaryContent{
-						MIMEType: mimeType,
-						Data:     data,
-					},
-					llms.TextContent{
-						Text: prompt,
+		dataBase64 := base64.StdEncoding.EncodeToString(data)
+
+		d := client.D{
+			"model": modelChat,
+			"messages": []client.D{
+				{
+					"role": "user",
+					"content": []client.D{
+						{
+							"type": "text",
+							"text": prompt,
+						},
+						{
+							"type": "image_url",
+							"image_url": client.D{
+								"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
+							},
+						},
 					},
 				},
 			},
+			"temperature": 1.0,
+			"top_p":       0.5,
+			"top_k":       20,
 		}
 
-		cr, err := llm.GenerateContent(
-			ctx,
-			messages,
-			llms.WithMaxTokens(500),
-			llms.WithTemperature(1.0),
-		)
-		if err != nil {
-			return fmt.Errorf("generate content: %w", err)
+		var result client.Chat
+		if err := cln.Do(ctx, http.MethodPost, urlChat, d, &result); err != nil {
+			return fmt.Errorf("do: %w", err)
 		}
 
 		// -------------------------------------------------------------------------
 
 		fmt.Println("  - Generate embeddings for the image description")
 
-		vectors, err := llmEmbed.CreateEmbedding(ctx, []string{cr.Choices[0].Content})
-		if err != nil {
-			return fmt.Errorf("create embedding: %w", err)
+		d = client.D{
+			"model":              modelEmbedding,
+			"truncate":           true,
+			"truncate_direction": "right",
+			"input":              result.Choices[0].Message.Content,
 		}
+
+		// Get the vector embedding for this question.
+		var resp client.Embedding
+		if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
+			return fmt.Errorf("do: %w", err)
+		}
+
+		vector := resp.Data[0].Embedding
 
 		// -------------------------------------------------------------------------
 
@@ -170,8 +175,8 @@ func run() error {
 
 		d1 := document{
 			FileName:    fileName,
-			Description: cr.Choices[0].Content,
-			Embedding:   vectors[0],
+			Description: result.Choices[0].Message.Content,
+			Embedding:   vector,
 		}
 
 		res, err := col.InsertOne(ctx, d1)
@@ -207,12 +212,12 @@ func run() error {
 		ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 		defer cancel()
 
-		results, err := vectorSearch(ctx, llmEmbed, col, question)
+		results, err := vectorSearch(ctx, cln, col, question)
 		if err != nil {
 			return fmt.Errorf("vectorSearch: %w", err)
 		}
 
-		if err := questionResponse(ctx, llm, question, results); err != nil {
+		if err := questionResponse(ctx, clnSSE, question, results); err != nil {
 			return fmt.Errorf("questionResponse: %w", err)
 		}
 	}
@@ -322,15 +327,25 @@ func readImage(fileName string) ([]byte, string, error) {
 	return data, mimeType, nil
 }
 
-func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
+func vectorSearch(ctx context.Context, cln *client.Client, col *mongo.Collection, question string) ([]searchResult, error) {
 
 	// -------------------------------------------------------------------------
 	// Get the vector embedding for the question.
 
-	embedding, err := llm.CreateEmbedding(ctx, []string{question})
-	if err != nil {
-		return nil, fmt.Errorf("create embedding: %w", err)
+	d := client.D{
+		"model":              modelEmbedding,
+		"truncate":           true,
+		"truncate_direction": "right",
+		"input":              question,
 	}
+
+	// Get the vector embedding for this question.
+	var resp client.Embedding
+	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+
+	vector := resp.Data[0].Embedding
 
 	// -------------------------------------------------------------------------
 	// We want to find the nearest neighbors from the question vector embedding.
@@ -342,7 +357,7 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 				"index":       "vector_index",
 				"exact":       true,
 				"path":        "embedding",
-				"queryVector": embedding[0],
+				"queryVector": vector,
 				"limit":       5,
 			}},
 		},
@@ -376,7 +391,7 @@ func vectorSearch(ctx context.Context, llm *ollama.LLM, col *mongo.Collection, q
 	return results, nil
 }
 
-func questionResponse(ctx context.Context, llm *ollama.LLM, question string, results []searchResult) error {
+func questionResponse(ctx context.Context, cln *client.SSEClient[client.ChatSSE], question string, results []searchResult) error {
 	type searchResult struct {
 		FileName    string `json:"file_name"`
 		Description string `json:"image_description"`
@@ -458,28 +473,29 @@ func questionResponse(ctx context.Context, llm *ollama.LLM, question string, res
 
 	finalPrompt := fmt.Sprintf(prompt, string(content), question)
 
-	// This function will display the response as it comes from the server.
-	f := func(ctx context.Context, chunk []byte) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		fmt.Printf("%s", chunk)
-		return nil
+	d := client.D{
+		"model": modelChat,
+		"messages": []client.D{
+			{
+				"role":    "user",
+				"content": finalPrompt,
+			},
+		},
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
+		"stream":      true,
 	}
 
-	fmt.Print("\nResults:\n\n")
+	ch := make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
 
-	// Send the prompt to the model server.
-	_, err = llm.Call(
-		ctx,
-		finalPrompt,
-		llms.WithStreamingFunc(f),
-		llms.WithMaxTokens(500),
-		llms.WithTemperature(1.0),
-	)
-	if err != nil {
-		return fmt.Errorf("call: %w", err)
+	fmt.Print("\nModel Response:\n\n")
+
+	for resp := range ch {
+		fmt.Print(resp.Choices[0].Delta.Content)
 	}
 
 	fmt.Printf("\n\n")

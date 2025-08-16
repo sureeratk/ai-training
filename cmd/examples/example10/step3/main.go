@@ -60,15 +60,7 @@ func run() error {
 }
 
 func weatherQuestion(ctx context.Context) error {
-	logger := func(ctx context.Context, msg string, v ...any) {
-		s := fmt.Sprintf("msg: %s", msg)
-		for i := 0; i < len(v); i = i + 2 {
-			s = s + fmt.Sprintf(", %s: %v", v[i], v[i+1])
-		}
-		log.Println(s)
-	}
-
-	cln := client.NewSSE[client.ChatSSE](logger)
+	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
 	// -------------------------------------------------------------------------
 	// Start by asking what the weather is like in New York City
