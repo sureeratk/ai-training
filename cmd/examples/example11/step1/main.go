@@ -1,7 +1,3 @@
-// https://github.com/modelcontextprotocol/go-sdk
-// https://github.com/modelcontextprotocol/go-sdk/blob/main/design/design.md
-// https://github.com/orgs/modelcontextprotocol/discussions/364
-//
 // This example shows you how to create a basic MCP interaction where the Server
 // runs as a service and extends the set of tools as endpoints. The Client makes
 // a call to the Server via the MCP SSE protocol. The makefile shows you the
@@ -12,6 +8,13 @@
 //	$ make example11-step1
 //
 // # This doesn't require you to run any additional services.
+//
+// # Extra reading and watching:
+//
+//  https://github.com/modelcontextprotocol/go-sdk
+//  https://github.com/modelcontextprotocol/go-sdk/blob/main/design/design.md
+//  https://github.com/orgs/modelcontextprotocol/discussions/364
+
 package main
 
 import (

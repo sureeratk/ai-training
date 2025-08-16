@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you how to create a terminal based chat agent.
 // using the Ollama service.
 //
@@ -10,6 +8,11 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+//
+// # Extra reading and watching:
+//
+//  https://ampcode.com/how-to-build-an-agent
+
 package main
 
 import (

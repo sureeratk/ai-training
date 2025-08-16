@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you how to use the program from cmd/examples/example10/step4/main.go
 // and move the tooling to a MCP service that is called by the tooling.
 //

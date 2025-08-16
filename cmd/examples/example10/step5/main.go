@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you how introduce "real" tooling into the coding agent
 // from step4. We will add support for reading, listing, creating, and editing
 // files. We also enhance the agent's UI.
@@ -11,6 +9,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+
 package main
 
 import (

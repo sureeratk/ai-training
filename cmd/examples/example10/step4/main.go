@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you how add tool calling to the chat agent from
 // steps 2 and 3.
 //
@@ -10,6 +8,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+
 package main
 
 import (

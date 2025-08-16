@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you the workflow and mechanics for tool calling.
 //
 // # Running the example:
@@ -9,6 +7,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+
 package main
 
 import (

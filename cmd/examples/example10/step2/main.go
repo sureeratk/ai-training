@@ -1,5 +1,3 @@
-// https://ampcode.com/how-to-build-an-agent
-//
 // This example shows you how to add a system prompt and better UI formatting
 // from the chat agent in step 1.
 //
@@ -10,6 +8,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+
 package main
 
 import (
