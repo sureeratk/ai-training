@@ -1,17 +1,17 @@
 // This example shows you how to use MongoDB and Ollama to perform a vector
 // search for a user question. The search will return the top 5 chunks from
 // the database. Then these chunks are sent to the Llama model to create a
-// coherent response.
+// coherent response. You must run example06 first.
 //
 // # Running the example:
 //
-//	$ make example7
+//	$ make example07
 //
 // # This requires running the following commands:
 //
-//  $ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
-//  $ make ollama-up  // This starts the Ollama service.
-//	$ make example6   // This creates the book.embeddings file
+//  $ make compose-up
+//  $ make ollama-up
+//	$ make example06
 
 package main
 
@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -32,18 +31,14 @@ import (
 )
 
 const (
-	urlChat        = "http://localhost:11434/v1/chat/completions"
-	urlEmbedding   = "http://localhost:11434/v1/embeddings"
-	modelChat      = "qwen2.5vl:latest"
-	modelEmbedding = "bge-m3:latest"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
+	dbName     = "example06"
+	colName    = "book"
+	dimensions = 1024
 )
-
-type searchResult struct {
-	ID        int       `bson:"id"`
-	Text      string    `bson:"text"`
-	Embedding []float64 `bson:"embedding"`
-	Score     float64   `bson:"score"`
-}
 
 // =============================================================================
 
@@ -54,6 +49,9 @@ func main() {
 }
 
 func run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("\nAsk Bill a question about Go: ")
 
@@ -63,9 +61,6 @@ func run() error {
 	}
 
 	fmt.Print("\n")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
-	defer cancel()
 
 	results, err := vectorSearch(ctx, question)
 	if err != nil {
@@ -80,47 +75,98 @@ func run() error {
 }
 
 func vectorSearch(ctx context.Context, question string) ([]searchResult, error) {
+	llm := client.NewLLM(urlEmbed, modelEmbed)
 
-	// -------------------------------------------------------------------------
-	// Use ollama to generate a vector embedding for the question.
-
-	// Construct the http client for interacting with the Ollama.
-	cln := client.New(client.StdoutLogger)
-
-	// Define the request for the embedding.
-	d := client.D{
-		"model":              modelEmbedding,
-		"truncate":           true,
-		"truncate_direction": "right",
-		"input":              question,
-	}
-
-	// Get the vector embedding for this question.
-	var resp client.Embedding
-	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
+	vector, err := llm.EmbedText(ctx, question)
+	if err != nil {
 		return nil, fmt.Errorf("do: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
-	// Establish a connection with mongo and access the collection.
 
-	// Connect to mongodb.
 	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return nil, fmt.Errorf("connectToMongo: %w", err)
+		return nil, fmt.Errorf("mongodb.Connect: %w", err)
 	}
 
-	const dbName = "example5"
-	const collectionName = "book"
-
-	// Capture a connection to the collection. We assume this exists with
-	// data already.
-	col := client.Database(dbName).Collection(collectionName)
+	col := client.Database(dbName).Collection(colName)
 
 	// -------------------------------------------------------------------------
-	// Perform the vector search.
 
-	// We want to find the nearest neighbors from the question vector embedding.
+	results, err := vectorDBSearch(ctx, col, vector, dimensions)
+	if err != nil {
+		return nil, fmt.Errorf("vectorDBSearch: %w", err)
+	}
+
+	return results, nil
+}
+
+func questionResponse(ctx context.Context, question string, results []searchResult) error {
+	const prompt = `Use the following pieces of information to answer the user's question.	
+	
+	If you don't know the answer, say that you don't know.	
+	
+	Answer the question and provide additional helpful information.
+	
+	Responses should be properly formatted to be easily read.	
+	
+	Context:
+	%s	
+	
+	Question:
+	%s
+`
+
+	var chunks strings.Builder
+
+	for _, res := range results {
+		if res.Score >= .70 {
+			chunks.WriteString(res.Text)
+			chunks.WriteString(".\n")
+
+			// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
+			// SO YOU DON'T EXCEED THE CONTEXT WINDOW (MAXIMUM TOKENS ALLOWED BY
+			// THE MODEL). OUR CURRENT MODEL SUPPORTS 8192 TOKENS. THERE IS A
+			// TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH THIS.
+		}
+	}
+
+	content := chunks.String()
+	if content == "" {
+		fmt.Println("Don't have enough information to provide an answer")
+		return nil
+	}
+
+	finalPrompt := fmt.Sprintf(prompt, content, question)
+
+	// -------------------------------------------------------------------------
+
+	llm := client.NewLLM(urlChat, modelChat)
+
+	ch, err := llm.ChatCompletionsSSE(ctx, finalPrompt)
+	if err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+
+	fmt.Print("Model Response:\n\n")
+
+	for resp := range ch {
+		fmt.Print(resp.Choices[0].Delta.Content)
+	}
+
+	return nil
+}
+
+// =============================================================================
+
+type searchResult struct {
+	ID        int       `bson:"id"`
+	Text      string    `bson:"text"`
+	Embedding []float64 `bson:"embedding"`
+	Score     float64   `bson:"score"`
+}
+
+func vectorDBSearch(ctx context.Context, col *mongo.Collection, vector []float64, limit int) ([]searchResult, error) {
 	pipeline := mongo.Pipeline{
 		{{
 			Key: "$vectorSearch",
@@ -128,8 +174,8 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 				"index":       "vector_index",
 				"exact":       true,
 				"path":        "embedding",
-				"queryVector": resp.Data[0].Embedding,
-				"limit":       5,
+				"queryVector": vector,
+				"limit":       limit,
 			}},
 		},
 		{{
@@ -157,74 +203,4 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 	}
 
 	return results, nil
-}
-
-func questionResponse(ctx context.Context, question string, results []searchResult) error {
-
-	// Construct the http client for interacting with the Ollama.
-	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
-
-	// Format a prompt to direct the model what to do with the content and
-	// the question.
-	prompt := `Use the following pieces of information to answer the user's question.
-	
-If you don't know the answer, say that you don't know.	
-
-Answer the question and provide additional helpful information.
-
-Responses should be properly formatted to be easily read.
-	
-Context: %s
-	
-Question: %s
-`
-
-	var chunks strings.Builder
-
-	for _, res := range results {
-		if res.Score >= .70 {
-			chunks.WriteString(res.Text)
-			chunks.WriteString(".\n")
-
-			// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
-			// SO YOU DON'T EXCEED THE CONTEXT WINDOW (MAXIMUM TOKENS ALLOWED BY
-			// THE MODEL). OUR CURRENT MODEL SUPPORTS 8192 TOKENS. THERE IS A
-			// TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH THIS.
-		}
-	}
-
-	content := chunks.String()
-	if content == "" {
-		fmt.Println("Don't have enough information to provide an answer")
-		return nil
-	}
-
-	finalPrompt := fmt.Sprintf(prompt, content, question)
-
-	d := client.D{
-		"model": modelChat,
-		"messages": []client.D{
-			{
-				"role":    "user",
-				"content": finalPrompt,
-			},
-		},
-		"temperature": 1.0,
-		"top_p":       0.5,
-		"top_k":       20,
-		"stream":      true,
-	}
-
-	ch := make(chan client.ChatSSE, 100)
-	if err := cln.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
-
-	fmt.Print("Model Response:\n\n")
-
-	for resp := range ch {
-		fmt.Print(resp.Choices[0].Delta.Content)
-	}
-
-	return nil
 }

@@ -7,27 +7,30 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up  // This starts the Ollama service.
+//	$ make ollama-up
+
 package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
 const (
-	urlChat        = "http://localhost:11434/v1/chat/completions"
-	urlEmbedding   = "http://localhost:11434/v1/embeddings"
-	modelChat      = "qwen2.5vl:latest"
-	modelEmbedding = "bge-m3:latest"
-	imagePath      = "cmd/samples/gallery/roseimg.png"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
+	imagePath  = "cmd/samples/gallery/roseimg.png"
 )
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -36,95 +39,61 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
 
 	// -------------------------------------------------------------------------
 
-	cln := client.New(client.StdoutLogger)
+	fmt.Println("\nGenerating image description:")
 
-	// -------------------------------------------------------------------------
-
-	data, mimeType, err := readImage(imagePath)
+	image, mimeType, err := readImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("read image: %w", err)
+		return fmt.Errorf("readImage: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\nGenerating image description:\n\n")
+	const prompt = `
+		Describe the image and be concise and accurate keeping the description under 200 words.
 
-	prompt := `Describe the image. Be concise and accurate. Do not be overly
-	verbose or stylistic. Make sure all the elements in the image are
-	enumerated and described. Do not include any additional details. Keep
-	the description under 200 words. At the end of the description, create
-	a list of tags with the names of all the elements in the image. Do not
-	output anything past this list.
-	Encode the list as valid JSON, as in this example:
-	[
-		"tag1",
-		"tag2",
-		"tag3",
-		...
-	]
-	Make sure the JSON is valid, doesn't have any extra spaces, and is
-	properly formatted.`
+		Do not be overly verbose or stylistic.
 
-	dataBase64 := base64.StdEncoding.EncodeToString(data)
+		Make sure all the elements in the image are enumerated and described.
 
-	d := client.D{
-		"model": modelChat,
-		"messages": []client.D{
-			{
-				"role": "user",
-				"content": []client.D{
-					{
-						"type": "text",
-						"text": prompt,
-					},
-					{
-						"type": "image_url",
-						"image_url": client.D{
-							"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
-						},
-					},
-				},
-			},
-		},
-		"temperature": 1.0,
-		"top_p":       0.5,
-		"top_k":       20,
+		At the end of the description, create a list of tags with the names of all the
+		elements in the image and do not output anything past this list.
+
+		Encode the list as valid JSON, as in this example:
+		["tag1","tag2","tag3",...]
+
+		Make sure the JSON is valid, doesn't have any extra spaces, and is
+		properly formatted.`
+
+	llm := client.NewLLM(urlChat, modelChat)
+
+	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+	if err != nil {
+		return fmt.Errorf("llm.ChatCompletions: %w", err)
 	}
 
-	var result client.Chat
-	if err := cln.Do(ctx, http.MethodPost, urlChat, d, &result); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
-
-	fmt.Print(result.Choices[0].Message.Content)
-	fmt.Print("\n\n")
+	fmt.Printf("%s\n", results)
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("Generate embeddings for the image description:\n\n")
+	fmt.Println("\nGenerating embeddings for the image description:")
 
-	d = client.D{
-		"model":              modelEmbedding,
-		"truncate":           true,
-		"truncate_direction": "right",
-		"input":              result.Choices[0].Message.Content,
+	llm = client.NewLLM(urlEmbed, modelEmbed)
+
+	vector, err := llm.EmbedText(ctx, results)
+	if err != nil {
+		return fmt.Errorf("llm.EmbedText: %w", err)
 	}
 
-	// Get the vector embedding for this question.
-	var resp client.Embedding
-	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
+	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
 
-	vector := resp.Data[0].Embedding
+	// -------------------------------------------------------------------------
 
-	fmt.Printf("%v...%v\n\n", vector[0:3], vector[len(vector)-3:])
-
-	fmt.Println("DONE")
+	fmt.Println("\nDONE")
 	return nil
 }
 

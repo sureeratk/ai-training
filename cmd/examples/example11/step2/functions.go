@@ -49,6 +49,53 @@ func (cln *mcpClient) Call(ctx context.Context, transport *mcp.SSEClientTranspor
 }
 
 // =============================================================================
+
+// toolSuccessResponse returns a successful structured tool response.
+func toolSuccessResponse(toolID string, toolName string, keyValues ...any) client.D {
+	data := make(map[string]any)
+	for i := 0; i < len(keyValues); i = i + 2 {
+		data[keyValues[i].(string)] = keyValues[i+1]
+	}
+
+	return toolResponse(toolID, toolName, data, "SUCCESS")
+}
+
+// toolErrorResponse returns a failed structured tool response.
+func toolErrorResponse(toolID string, toolName string, err error) client.D {
+	data := map[string]any{"error": err.Error()}
+
+	return toolResponse(toolID, toolName, data, "FAILED")
+}
+
+// toolResponse creates a structured tool response.
+func toolResponse(toolID string, toolName string, data map[string]any, status string) client.D {
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: status,
+		Data:   data,
+	}
+
+	content, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolID,
+			"tool_name":    toolName,
+			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolID,
+		"tool_name":    toolName,
+		"content":      string(content),
+	}
+}
+
+// =============================================================================
 // ReadFile Tool
 
 // ReadFile represents a tool that can be used to read the contents of a file.
@@ -58,9 +105,9 @@ type ReadFile struct {
 	transport *mcp.SSEClientTransport
 }
 
-// NewReadFile creates a new instance of the ReadFile tool and loads it
+// RegisterReadFile creates a new instance of the ReadFile tool and loads it
 // into the provided tools map.
-func NewReadFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
+func RegisterReadFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_read_file"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
@@ -139,9 +186,9 @@ type SearchFiles struct {
 	transport *mcp.SSEClientTransport
 }
 
-// NewSearchFiles creates a new instance of the SearchFiles tool and loads it
+// RegisterSearchFiles creates a new instance of the SearchFiles tool and loads it
 // into the provided tools map.
-func NewSearchFiles(mcpClient *mcpClient, tools map[string]Tool) client.D {
+func RegisterSearchFiles(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_search_files"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
@@ -228,9 +275,9 @@ type CreateFile struct {
 	transport *mcp.SSEClientTransport
 }
 
-// NewCreateFile creates a new instance of the CreateFile tool and loads it
+// RegisterCreateFile creates a new instance of the CreateFile tool and loads it
 // into the provided tools map.
-func NewCreateFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
+func RegisterCreateFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_create_file"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
@@ -309,9 +356,9 @@ type GoCodeEditor struct {
 	transport *mcp.SSEClientTransport
 }
 
-// NewGoCodeEditor creates a new instance of the GoCodeEditor tool and loads it
+// RegisterGoCodeEditor creates a new instance of the GoCodeEditor tool and loads it
 // into the provided tools map.
-func NewGoCodeEditor(mcpClient *mcpClient, tools map[string]Tool) client.D {
+func RegisterGoCodeEditor(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_go_code_editor"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)

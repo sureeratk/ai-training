@@ -82,7 +82,6 @@ type Agent struct {
 	getUserMessage func() (string, bool)
 }
 
-// NewAgent creates a new instance of Agent.
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	agent := Agent{
 		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
@@ -92,7 +91,6 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	return &agent, nil
 }
 
-// Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 

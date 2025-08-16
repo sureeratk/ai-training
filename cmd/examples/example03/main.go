@@ -4,7 +4,7 @@
 //
 // # Running the example:
 //
-//	$ make example3
+//	$ make example03
 //
 // # This requires running the following command:
 //

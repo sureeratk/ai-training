@@ -3,11 +3,11 @@
 //
 // # Running the example:
 //
-//  $ make example2
+//  $ make example02
 //
 // # This requires running the following commands:
 //
-//  $ make ollama-up // This starts the Ollama service.
+//  $ make ollama-up
 //
 // # Extra reading and watching:
 //
@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -59,8 +58,8 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Construct the http client for interacting with the Ollama.
-	cln := client.New(client.StdoutLogger)
+	// Construct the llm client for access the model server.
+	llm := client.NewLLM(url, model)
 
 	// -------------------------------------------------------------------------
 
@@ -90,19 +89,10 @@ func run() error {
 	for i, dp := range dataPoints {
 		dataPoint := dp.(data)
 
-		d := client.D{
-			"model":              model,
-			"truncate":           true,
-			"truncate_direction": "right",
-			"input":              dataPoint.Text,
+		vector, err := llm.EmbedText(ctx, dataPoint.Text)
+		if err != nil {
+			return fmt.Errorf("embedding: %w", err)
 		}
-
-		var resp client.Embedding
-		if err := cln.Do(ctx, http.MethodPost, url, d, &resp); err != nil {
-			return fmt.Errorf("do: %w", err)
-		}
-
-		vector := resp.Data[0].Embedding
 
 		dataPoint.Embedding = vector
 		dataPoints[i] = dataPoint

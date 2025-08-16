@@ -4,7 +4,7 @@
 //
 // # Running the example:
 //
-//	$ make example1
+//	$ make example01
 //
 // # Extra reading and watching:
 //
@@ -29,7 +29,6 @@
 //  Euclidean cares about magnitude, but we often care about the direction (relative feature ratios).
 //  Cosine similarity measures the angle between two vectors. It is invariant to scaling,
 //  which is handy when features are binary or have different scales.
-//
 
 package main
 

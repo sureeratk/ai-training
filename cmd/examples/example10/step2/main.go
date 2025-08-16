@@ -30,9 +30,6 @@ const (
 	model = "gpt-oss:latest"
 )
 
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
 var contextWindow = 1024 * 8
 
 func init() {
@@ -72,13 +69,11 @@ func run() error {
 
 // =============================================================================
 
-// Agent represents the chat agent that can use tools to perform tasks.
 type Agent struct {
 	sseClient      *client.SSEClient[client.ChatSSE]
 	getUserMessage func() (string, bool)
 }
 
-// NewAgent creates a new instance of Agent.
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	agent := Agent{
 		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
@@ -90,14 +85,12 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 // WE WILL ADD A SYSTEM PROMPT TO THE AGENT TO HELP WITH CLARIFYING INSTRUCTIONS.
 
-// The system prompt for the model so it behaves as expected.
-var systemPrompt = `You are a helpful coding assistant that has tools to assist
+const systemPrompt = `You are a helpful coding assistant that has tools to assist
 you in coding.
 
 Reasoning: high
 `
 
-// Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 

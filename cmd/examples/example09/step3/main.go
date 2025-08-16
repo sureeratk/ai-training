@@ -1,5 +1,5 @@
-// This example takes step2 and shows you how to store the image path and its
-// vector embedding into a vector database.
+// This example takes step2 and shows you how to store the image details
+// into a vector database for similarity searching.
 //
 // # Running the example:
 //
@@ -7,13 +7,13 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up  // This starts the Ollama service.
-//	$ make compose-up // This starts the MongoDB service.
+//	$ make ollama-up
+//	$ make compose-up
+
 package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,22 +28,23 @@ import (
 )
 
 const (
-	urlChat        = "http://localhost:11434/v1/chat/completions"
-	urlEmbedding   = "http://localhost:11434/v1/embeddings"
-	modelChat      = "qwen2.5vl:latest"
-	modelEmbedding = "bge-m3:latest"
-	imagePath      = "cmd/samples/gallery/roseimg.png"
-	dbName         = "example9"
-	collectionName = "images-3"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
+	imagePath  = "cmd/samples/gallery/roseimg.png"
+	dbName     = "example9"
+	colName    = "images-3"
+	dimensions = 1024
 )
+
+// =============================================================================
 
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
 	Embedding   []float64 `bson:"embedding"`
 }
-
-// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -52,193 +53,106 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
 
 	// -------------------------------------------------------------------------
 
-	cln := client.New(client.StdoutLogger)
+	fmt.Println("\nConnecting to MongoDB")
 
-	// -------------------------------------------------------------------------
-
-	mongoClient, err := initDatabase(dbName, collectionName)
+	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return fmt.Errorf("initDatabase: %w", err)
+		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
 
-	col := mongoClient.Database(dbName).Collection(collectionName)
+	fmt.Println("Initializing Database")
+
+	col, err := initDB(ctx, dbClient)
+	if err != nil {
+		return fmt.Errorf("initDB: %w", err)
+	}
 
 	// -------------------------------------------------------------------------
 
 	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
 	if findRes.Err() == nil {
-		fmt.Println("Delete existing image from database")
+		fmt.Println("Deleting existing image from database")
 		_, err := col.DeleteOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
 		if err != nil {
-			return fmt.Errorf("delete image: %w", err)
+			return fmt.Errorf("col.DeleteOne: %w", err)
 		}
 	}
 
 	// -------------------------------------------------------------------------
 
-	data, mimeType, err := readImage(imagePath)
+	fmt.Println("\nGenerating image description:")
+
+	image, mimeType, err := readImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("read image: %w", err)
+		return fmt.Errorf("readImage: %w", err)
 	}
 
-	// ---------------------------------------------------------------------
+	// -------------------------------------------------------------------------
 
-	fmt.Print("\nGenerating image description:\n\n")
+	const prompt = `
+		Describe the image and be concise and accurate keeping the description under 200 words.
 
-	prompt := `Describe the image. Be concise and accurate. Do not be overly
-		verbose or stylistic. Make sure all the elements in the image are
-		enumerated and described. Do not include any additional details. Keep
-		the description under 200 words. At the end of the description, create
-		a list of tags with the names of all the elements in the image. Do not
-		output anything past this list.
+		Do not be overly verbose or stylistic.
+
+		Make sure all the elements in the image are enumerated and described.
+
+		At the end of the description, create a list of tags with the names of all the
+		elements in the image and do not output anything past this list.
+
 		Encode the list as valid JSON, as in this example:
-		[
-			"tag1",
-			"tag2",
-			"tag3",
-			...
-		]
+		["tag1","tag2","tag3",...]
+
 		Make sure the JSON is valid, doesn't have any extra spaces, and is
 		properly formatted.`
 
-	dataBase64 := base64.StdEncoding.EncodeToString(data)
+	llm := client.NewLLM(urlChat, modelChat)
 
-	d := client.D{
-		"model": modelChat,
-		"messages": []client.D{
-			{
-				"role": "user",
-				"content": []client.D{
-					{
-						"type": "text",
-						"text": prompt,
-					},
-					{
-						"type": "image_url",
-						"image_url": client.D{
-							"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
-						},
-					},
-				},
-			},
-		},
-		"temperature": 1.0,
-		"top_p":       0.5,
-		"top_k":       20,
+	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+	if err != nil {
+		return fmt.Errorf("llm.ChatCompletions: %w", err)
 	}
 
-	var result client.Chat
-	if err := cln.Do(ctx, http.MethodPost, urlChat, d, &result); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
-
-	fmt.Print(result.Choices[0].Message.Content)
-	fmt.Print("\n\n")
+	fmt.Printf("%s\n", results)
 
 	// ---------------------------------------------------------------------
 
-	fmt.Print("Generate embeddings for the image description:\n\n")
+	fmt.Println("\nGenerating embeddings for the image description:")
 
-	d = client.D{
-		"model":              modelEmbedding,
-		"truncate":           true,
-		"truncate_direction": "right",
-		"input":              result.Choices[0].Message.Content,
+	llm = client.NewLLM(urlEmbed, modelEmbed)
+
+	vector, err := llm.EmbedText(ctx, results)
+	if err != nil {
+		return fmt.Errorf("llm.EmbedText: %w", err)
 	}
 
-	// Get the vector embedding for this question.
-	var resp client.Embedding
-	if err := cln.Do(ctx, http.MethodPost, urlEmbedding, d, &resp); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
-
-	vector := resp.Data[0].Embedding
-
-	fmt.Printf("%v...%v\n\n", vector[0:3], vector[len(vector)-3:])
+	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
 
 	// ---------------------------------------------------------------------
 
-	fmt.Print("Inserting image description into the database:\n\n")
+	fmt.Println("\nInserting image information into the database:")
 
 	d1 := document{
 		FileName:    imagePath,
-		Description: result.Choices[0].Message.Content,
+		Description: results,
 		Embedding:   vector,
 	}
 
 	res, err := col.InsertOne(ctx, d1)
 	if err != nil {
-		return fmt.Errorf("insert: %w", err)
+		return fmt.Errorf("col.InsertOne: %w", err)
 	}
 
-	fmt.Printf("Inserted db id: %s\n\n", res.InsertedID)
+	fmt.Printf("%s\n", res.InsertedID)
 
-	fmt.Println("DONE")
+	// ---------------------------------------------------------------------
+
+	fmt.Println("\nDONE")
 	return nil
-}
-
-func initDatabase(dbName string, collectionName string) (*mongo.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// -------------------------------------------------------------------------
-	// Connect to mongo
-
-	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return nil, fmt.Errorf("connectToMongo: %w", err)
-	}
-
-	fmt.Println("\nConnected to MongoDB")
-
-	// -------------------------------------------------------------------------
-	// Create database and collection
-
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, collectionName)
-	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
-	}
-
-	fmt.Println("Created Collection")
-
-	// -------------------------------------------------------------------------
-	// Create vector index
-
-	const indexName = "vector_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: 1024,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
-	}
-
-	fmt.Println("Created Vector Index")
-
-	// -------------------------------------------------------------------------
-	// Apply a unique index just to be safe.
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "file_name", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
-		return nil, fmt.Errorf("createUniqueIndex: %w", err)
-	}
-
-	fmt.Println("Created Unique file_name Index")
-
-	return client, nil
 }
 
 func readImage(fileName string) ([]byte, string, error) {
@@ -253,4 +167,36 @@ func readImage(fileName string) ([]byte, string, error) {
 	default:
 		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
 	}
+}
+
+// =============================================================================
+
+func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, colName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
+
+	const indexName = "vector_index"
+
+	settings := mongodb.VectorIndexSettings{
+		NumDimensions: dimensions,
+		Path:          "embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	}
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	col.Indexes().CreateOne(ctx, indexModel)
+
+	return col, nil
 }

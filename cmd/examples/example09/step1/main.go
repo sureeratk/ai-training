@@ -1,5 +1,5 @@
 // This example shows you how to use a vision model to generate
-// an image description and update the image with the description.
+// an image description.
 //
 // # Running the example:
 //
@@ -7,16 +7,17 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up  // This starts the Ollama service.
+//	$ make ollama-up
+
 package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
@@ -27,6 +28,8 @@ const (
 	imagePath = "cmd/samples/gallery/roseimg.png"
 )
 
+// =============================================================================
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -34,74 +37,48 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	defer cancel()
 
 	// -------------------------------------------------------------------------
 
-	cln := client.New(client.StdoutLogger)
+	fmt.Println("\nGenerating image description:")
 
-	// -------------------------------------------------------------------------
-
-	data, mimeType, err := readImage(imagePath)
+	image, mimeType, err := readImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("read image: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\nGenerating image description:\n\n")
+	const prompt = `
+		Describe the image and be concise and accurate keeping the description under 200 words.
 
-	prompt := `Describe the image. Be concise and accurate. Do not be overly
-	verbose or stylistic. Make sure all the elements in the image are
-	enumerated and described. Do not include any additional details. Keep
-	the description under 200 words. At the end of the description, create
-	a list of tags with the names of all the elements in the image. Do not
-	output anything past this list.
-	Encode the list as valid JSON, as in this example:
-	[
-		"tag1",
-		"tag2",
-		"tag3",
-		...
-	]
-	Make sure the JSON is valid, doesn't have any extra spaces, and is
-	properly formatted.`
+		Do not be overly verbose or stylistic.
 
-	dataBase64 := base64.StdEncoding.EncodeToString(data)
+		Make sure all the elements in the image are enumerated and described.
 
-	d := client.D{
-		"model": model,
-		"messages": []client.D{
-			{
-				"role": "user",
-				"content": []client.D{
-					{
-						"type": "text",
-						"text": prompt,
-					},
-					{
-						"type": "image_url",
-						"image_url": client.D{
-							"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
-						},
-					},
-				},
-			},
-		},
-		"temperature": 1.0,
-		"top_p":       0.5,
-		"top_k":       20,
+		At the end of the description, create a list of tags with the names of all the
+		elements in the image and do not output anything past this list.
+
+		Encode the list as valid JSON, as in this example:
+		["tag1","tag2","tag3",...]
+
+		Make sure the JSON is valid, doesn't have any extra spaces, and is
+		properly formatted.`
+
+	llm := client.NewLLM(url, model)
+
+	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+	if err != nil {
+		return fmt.Errorf("chat completions: %w", err)
 	}
 
-	var result client.Chat
-	if err := cln.Do(ctx, http.MethodPost, url, d, &result); err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
+	fmt.Printf("%s\n", results)
 
-	fmt.Print(result.Choices[0].Message.Content)
-	fmt.Print("\n\n")
+	// -------------------------------------------------------------------------
 
-	fmt.Print("DONE\n")
+	fmt.Println("\nDONE")
 	return nil
 }
 

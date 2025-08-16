@@ -19,9 +19,19 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+func init() {
+	// -------------------------------------------------------------------------
+	// Runs the MCP server locally for our example purposes. This could be
+	// replaced with a MCP server that is running in a different process.
+
+	go func() {
+		mcpListenAndServe(mcpHost)
+	}()
+}
+
 // mcpListenAndServe starts the MCP server for all the tooling we support.
 func mcpListenAndServe(host string) {
-	fmt.Printf("Server: MCP servers serving at %s\n", host)
+	fmt.Printf("\nServer: MCP servers serving at %s\n", host)
 
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file_operations", Version: "v1.0.0"}, nil)
 

@@ -1,3 +1,4 @@
+// Package mongodb provides support for access a mongo database.
 package mongodb
 
 import (

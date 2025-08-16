@@ -30,9 +30,6 @@ const (
 	model = "gpt-oss:latest"
 )
 
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
 var contextWindow = 1024 * 8
 
 func init() {
@@ -75,14 +72,12 @@ func run() error {
 // DECLARE A TOOL INTERFACE TO ALLOW THE AGENT TO CALL ANY TOOL FUNCTION
 // WE DEFINE WITHOUT THE AGENT KNOWING THE EXACT TOOL IT IS USING.
 
-// Tool describes the features which all tools must implement.
 type Tool interface {
 	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }
 
 // =============================================================================
 
-// Agent represents the chat agent that can use tools to perform tasks.
 type Agent struct {
 	sseClient      *client.SSEClient[client.ChatSSE]
 	getUserMessage func() (string, bool)
@@ -94,7 +89,6 @@ type Agent struct {
 	toolDocuments []client.D
 }
 
-// NewAgent creates a new instance of Agent.
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 	// CONSTRUCT THE TOOLS MAP HERE BECAUSE IT IS PASSED ON TOOL CONSTRUCTION
@@ -117,8 +111,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 // WE NEED TO EXTEND THE SYSTEM PROMPT TO INCLUDE THE TOOLING INSTRUCTIONS.
 
-// The system prompt for the model so it behaves as expected.
-var systemPrompt = `You are a helpful coding assistant that has tools to assist
+const systemPrompt = `You are a helpful coding assistant that has tools to assist
 you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
@@ -135,7 +128,6 @@ If you get back results from a tool call, do not verify the results.
 Reasoning: high
 `
 
-// Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
 	var conversation []client.D
 
@@ -193,9 +185,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		var chunks []string
-
-		reasonThinking := false  // GPT models provide a Reasoning field.
-		contentThinking := false // Other reasoning models use <think> tags.
+		reasonThinking := false
+		contentThinking := false
 
 		fmt.Print("\n")
 
@@ -292,7 +283,6 @@ func (a *Agent) Run(ctx context.Context) error {
 // WE NEED A FUNCTION THAT LOOKS UP THE REQUESTED TOOL BY NAME AND CALLS IT
 // WITH THE MODEL PROVIDED PARAMETERS.
 
-// callTools will lookup a requested tool by name and call it.
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
 	var resps []client.D
 

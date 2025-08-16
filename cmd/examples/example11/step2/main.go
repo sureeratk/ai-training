@@ -13,8 +13,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -47,9 +46,6 @@ func init() {
 			log.Fatal(err)
 		}
 	}
-
-	rounded := float32(contextWindow) / float32(1024)
-	fmt.Printf("\nContext Window: %.0fK\n", rounded)
 }
 
 func main() {
@@ -59,15 +55,6 @@ func main() {
 }
 
 func run() error {
-
-	// -------------------------------------------------------------------------
-	// Runs the MCP server locally for our example purposes. This could be
-	// replaced with a MCP server that is running in a different process.
-
-	go func() {
-		mcpListenAndServe(mcpHost)
-	}()
-
 	// -------------------------------------------------------------------------
 	// Declare a function that can accept user input which the agent will use
 	// when it's the users turn.
@@ -115,16 +102,6 @@ type Agent struct {
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 	// -------------------------------------------------------------------------
-	// Construct the SSE client to make model calls.
-
-	sseClient := client.NewSSE[client.ChatSSE](client.StdoutLogger)
-
-	// -------------------------------------------------------------------------
-	// Construct the mcp client.
-
-	mcpClient := newMCPClient()
-
-	// -------------------------------------------------------------------------
 	// Construct the tokenizer.
 
 	tke, err := tiktoken.NewTiktoken()
@@ -135,19 +112,21 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	// -------------------------------------------------------------------------
 	// Construct the agent.
 
+	mcpClient := newMCPClient()
+
 	tools := map[string]Tool{}
 
 	agent := Agent{
-		sseClient:      sseClient,
-		mcpClient:      mcpClient,
+		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
+		mcpClient:      newMCPClient(),
 		getUserMessage: getUserMessage,
 		tke:            tke,
 		tools:          tools,
 		toolDocuments: []client.D{
-			NewReadFile(mcpClient, tools),
-			NewSearchFiles(mcpClient, tools),
-			NewCreateFile(mcpClient, tools),
-			NewGoCodeEditor(mcpClient, tools),
+			RegisterReadFile(mcpClient, tools),
+			RegisterSearchFiles(mcpClient, tools),
+			RegisterCreateFile(mcpClient, tools),
+			RegisterGoCodeEditor(mcpClient, tools),
 		},
 	}
 
@@ -155,7 +134,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 }
 
 // The system prompt for the model so it behaves as expected.
-var systemPrompt = `You are a helpful coding assistant that has tools to assist
+const systemPrompt = `You are a helpful coding assistant that has tools to assist
 you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
@@ -174,10 +153,9 @@ Reasoning: high
 
 // Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
-	var conversation []client.D        // History of the conversation
-	var reasonContent []string         // Reasoning content per model call
-	var inToolCall bool                // Need to know we are inside a tool call request
-	var lastToolCall []client.ToolCall // Last tool call to identify call dups
+	var conversation []client.D // History of the conversation
+	var reasonContent []string  // Reasoning content per model call
+	var inToolCall bool         // Need to know we are inside a tool call request
 
 	conversation = append(conversation, client.D{
 		"role":    "system",
@@ -185,6 +163,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	})
 
 	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
+
+	timeForResult := time.NewTicker(100 * time.Millisecond)
 
 	for {
 		// ---------------------------------------------------------------------
@@ -207,6 +187,30 @@ func (a *Agent) Run(ctx context.Context) error {
 		inToolCall = false
 
 		// ---------------------------------------------------------------------
+		// Let's show how long we are waiting for the model response.
+
+		wctx, cancelTimer := context.WithCancel(ctx)
+		timeForResult.Reset(100 * time.Millisecond)
+		start := time.Now()
+
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			for {
+				select {
+				case <-timeForResult.C:
+					m := time.Since(start).Milliseconds()
+					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", model, m/1000, m%1000)
+
+				case <-wctx.Done():
+					fmt.Print("\n")
+					timeForResult.Stop()
+					cancelTimer()
+					return
+				}
+			}
+		})
+
+		// ---------------------------------------------------------------------
 		// Now we will make a call to the model, we could be responding to a
 		// tool call or providing a user request.
 
@@ -222,16 +226,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			"tool_selection": "auto",
 		}
 
-		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", model)
 
 		ch := make(chan client.ChatSSE, 100)
-		ctx, cancelContext := context.WithTimeout(ctx, time.Minute*5)
+		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
 		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
-			cancelContext()
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 			inToolCall = false
-			lastToolCall = nil
+			cancelDoCall()
 			continue
 		}
 
@@ -243,38 +246,45 @@ func (a *Agent) Run(ctx context.Context) error {
 		contentThinking := false // Other reasoning models use <think> tags.
 		reasonContent = nil      // Reset the reasoning content for this next call.
 
-		fmt.Print("\n")
-
 		// ---------------------------------------------------------------------
 		// Process the response which comes in as chunks. So we need to process
 		// and save each chunk.
 
+		waitingForResponse := true
+
 		for resp := range ch {
+			if len(resp.Choices) == 0 {
+				continue
+			}
+
+			// Check if this is the first response. If it is, we will shutdown
+			// the G displaying the latency.
+			if waitingForResponse {
+				waitingForResponse = false
+				cancelTimer()
+				wg.Wait()
+			}
+
 			switch {
 
 			// Did the model ask us to execute a tool call?
 			case len(resp.Choices[0].Delta.ToolCalls) > 0:
 				fmt.Print("\n\n")
 
+				toolCall := resp.Choices[0].Delta.ToolCalls[0]
+
 				conversation = a.addToConversation(reasonContent, conversation, client.D{
-					"role":    "assistant",
-					"content": fmt.Sprintf("Tool call %s: %s(%v)", resp.Choices[0].Delta.ToolCalls[0].ID, resp.Choices[0].Delta.ToolCalls[0].Function.Name, resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
+					"role": "assistant",
+					"content": fmt.Sprintf("Tool call %s: %s(%v)",
+						toolCall.ID,
+						toolCall.Function.Name,
+						toolCall.Function.Arguments),
 				})
-
-				toolID := resp.Choices[0].Delta.ToolCalls[0].ID
-
-				result := compareToolCalls(toolID, lastToolCall, resp.Choices[0].Delta.ToolCalls)
-				if len(result) > 0 {
-					conversation = a.addToConversation(reasonContent, conversation, result)
-					inToolCall = true
-					continue
-				}
 
 				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)
 				if len(results) > 0 {
 					conversation = a.addToConversation(reasonContent, conversation, results...)
 					inToolCall = true
-					lastToolCall = resp.Choices[0].Delta.ToolCalls
 				}
 
 			// Did we get content? With some models a <think> tag could exist to
@@ -305,8 +315,6 @@ func (a *Agent) Run(ctx context.Context) error {
 					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
 				}
 
-				lastToolCall = nil
-
 			// Did we get reasoning content? ChatGPT models provide reasoning in
 			// the Delta.Reasoning field. Display it as a different color.
 			case resp.Choices[0].Delta.Reasoning != "":
@@ -321,7 +329,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 
-		cancelContext()
+		cancelDoCall()
 
 		// ---------------------------------------------------------------------
 		// We processed all the chunks from the response so we need to add
@@ -345,27 +353,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
-// callTools will lookup a requested tool by name and call it.
-func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
-	var resps []client.D
-
-	for _, toolCall := range toolCalls {
-		tool, exists := a.tools[toolCall.Function.Name]
-		if !exists {
-			continue
-		}
-
-		fmt.Printf("\u001b[92mtool: %s(%v)\u001b[0m:\n", toolCall.Function.Name, toolCall.Function.Arguments)
-
-		resp := tool.Call(ctx, toolCall)
-		resps = append(resps, resp)
-
-		fmt.Printf("%#v\n", resps)
-	}
-
-	return resps
-}
-
 // addToConversation will add new messages to the conversation history and
 // calculate the different tokens used in the conversation and display it to the
 // user. It will also check the amount of input tokens currently in history
@@ -377,11 +364,11 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 
 	for {
 		var currentWindow int
-		for _, c := range conversation {
-			currentWindow += a.tke.TokenCount(c["content"].(string))
+		for _, msg := range conversation {
+			currentWindow += a.tke.TokenCount(msg["content"].(string))
 		}
 
-		r := strings.Join(reasoning, "")
+		r := strings.Join(reasoning, " ")
 		reasonTokens := a.tke.TokenCount(r)
 
 		totalTokens := currentWindow + reasonTokens
@@ -405,91 +392,23 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 	return conversation
 }
 
-// =============================================================================
+// callTools will lookup a requested tool by name and call it.
+func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
+	var resps []client.D
 
-// compareToolCalls will try and detect if the model is asking us to call the
-// same tool twice. This function is not accurate because the arguments are in a
-// map. We need to fix that.
-func compareToolCalls(toolID string, last []client.ToolCall, current []client.ToolCall) client.D {
-	if len(last) != len(current) {
-		return client.D{}
-	}
-
-	for i := range last {
-		if last[i].Function.Name != current[i].Function.Name {
-			return client.D{}
+	for _, toolCall := range toolCalls {
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
 		}
 
-		if fmt.Sprintf("%v", last[i].Function.Arguments) != fmt.Sprintf("%v", current[i].Function.Arguments) {
-			return client.D{}
-		}
+		fmt.Printf("\n\u001b[92m%s(%v)\u001b[0m:\n\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
+		resp := tool.Call(ctx, toolCall)
+		resps = append(resps, resp)
+
+		fmt.Printf("%#v\n", resps)
 	}
 
-	fmt.Printf("\u001b[92mtool\u001b[0m: %s(%v)\n", current[0].Function.Name, current[0].Function.Arguments)
-	fmt.Printf("\u001b[92mtool\u001b[0m: %s\n", "Same tool call")
-
-	return toolErrorResponse(toolID, current[0].Function.Name, errors.New("data already provided in a previous response, please review the conversation history"))
-}
-
-// toolSuccessResponse returns a successful structured tool response.
-func toolSuccessResponse(toolID string, toolName string, values ...any) client.D {
-	data := make(map[string]any)
-	for i := 0; i < len(values); i = i + 2 {
-		data[values[i].(string)] = values[i+1]
-	}
-
-	info := struct {
-		Status string         `json:"status"`
-		Data   map[string]any `json:"data"`
-	}{
-		Status: "SUCCESS",
-		Data:   data,
-	}
-
-	json, err := json.Marshal(info)
-	if err != nil {
-		return client.D{
-			"role":         "tool",
-			"tool_call_id": toolID,
-			"tool_name":    toolName,
-			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
-		}
-	}
-
-	return client.D{
-		"role":         "tool",
-		"tool_call_id": toolID,
-		"tool_name":    toolName,
-		"content":      string(json),
-	}
-}
-
-// toolErrorResponse returns a failed structured tool response.
-func toolErrorResponse(toolID string, toolName string, err error) client.D {
-	info := struct {
-		Status string         `json:"status"`
-		Data   map[string]any `json:"data"`
-	}{
-		Status: "FAILED",
-		Data: map[string]any{
-			"error": err.Error(),
-		},
-	}
-
-	json, err := json.Marshal(info)
-	if err != nil {
-		return client.D{
-			"role":         "tool",
-			"tool_call_id": toolID,
-			"tool_name":    toolName,
-			"content":      `{"status": "FAILED", "data": "error marshaling tool response"}`,
-		}
-	}
-
-	return client.D{
-		"role":         "tool",
-		"tool_call_id": toolID,
-		"tool_name":    toolName,
-		"content":      string(json),
-	}
+	return resps
 }

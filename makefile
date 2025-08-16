@@ -20,6 +20,27 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 # Mongo support
 #
 # db.book.find({id: 300})
+#
+# db.book.aggregate([
+# 	{
+# 		"$vectorSearch": {
+# 			"index": "vector_index",
+# 			"exact": true,
+# 			"path": "embedding",
+# 			"queryVector": [1.2, 2.2, 3.2, 4.2],
+# 			"limit": 10
+# 		}
+# 	},
+# 	{
+# 		"$project": {
+# 			"text": 1,
+# 			"embedding": 1,
+# 			"score": {
+# 				"$meta": "vectorSearchScore"
+# 			}
+# 		}
+# 	}
+# ])
 
 # ==============================================================================
 # Install dependencies
@@ -78,7 +99,7 @@ example07:
 	go run cmd/examples/example07/main.go
 
 example08:
-	go run cmd/examples/example08/main.go
+	go run cmd/examples/example08/*.go
 
 example09-step1:
 	go run cmd/examples/example09/step1/main.go

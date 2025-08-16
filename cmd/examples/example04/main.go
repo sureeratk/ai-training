@@ -4,11 +4,11 @@
 //
 // # Running the example:
 //
-//  $ make example4
+//  $ make example04
 //
 // # This requires running the following command:
 //
-//	$ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
+//	$ make compose-up
 //
 // # You can use this command to open a prompt to mongodb:
 //
@@ -27,6 +27,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+const (
+	dbName     = "example4"
+	colName    = "book"
+	dimensions = 4
+)
+
+// =============================================================================
 
 type document struct {
 	ID        int       `bson:"id"`
@@ -54,50 +62,68 @@ func run() error {
 	defer cancel()
 
 	// -------------------------------------------------------------------------
-	// Connect to mongo
+
+	fmt.Println("\nConnecting to MongoDB")
 
 	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
+		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
 	defer client.Disconnect(ctx)
 
-	fmt.Println("\nConnected to MongoDB")
-
 	// -------------------------------------------------------------------------
-	// Create database and collection
 
-	const dbName = "example4"
-	const collectionName = "book"
+	fmt.Println("Initializing Database")
 
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, collectionName)
+	col, err := initDB(ctx, client)
 	if err != nil {
-		return fmt.Errorf("createCollection: %w", err)
+		return fmt.Errorf("initDB: %w", err)
 	}
 
-	fmt.Println("Created Collection")
+	// -------------------------------------------------------------------------
+
+	fmt.Println("Inserting Documents")
+
+	if err := insertDocuments(ctx, col); err != nil {
+		return fmt.Errorf("insertDocuments: %w", err)
+	}
+
+	// We need to give Mongo a little time to index the documents.
+	time.Sleep(time.Second)
 
 	// -------------------------------------------------------------------------
-	// Create vector index
+
+	fmt.Print("\n---- VECTOR SEARCH ----\n\n")
+
+	results, err := vectorSearch(ctx, col, []float64{1.2, 2.2, 3.2, 4.2}, 10)
+	if err != nil {
+		return fmt.Errorf("storeDocuments: %w", err)
+	}
+
+	fmt.Printf("%#v\n", results)
+
+	return nil
+}
+
+func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, colName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
 
 	const indexName = "vector_index"
 
 	settings := mongodb.VectorIndexSettings{
-		NumDimensions: 4,
+		NumDimensions: dimensions,
 		Path:          "embedding",
 		Similarity:    "cosine",
 	}
 
 	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return fmt.Errorf("createVectorIndex: %w", err)
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
 	}
-
-	fmt.Println("Created Vector Index")
-
-	// -------------------------------------------------------------------------
-	// Apply a unique index just to be safe.
 
 	unique := true
 	indexModel := mongo.IndexModel{
@@ -106,19 +132,14 @@ func run() error {
 	}
 	col.Indexes().CreateOne(ctx, indexModel)
 
-	fmt.Println("Created ID Index")
-
-	// -------------------------------------------------------------------------
 	// Delete any documents that might be there.
-
 	col.DeleteOne(ctx, bson.D{{Key: "id", Value: 1}})
 	col.DeleteOne(ctx, bson.D{{Key: "id", Value: 2}})
 
-	// -------------------------------------------------------------------------
-	// Store some documents with their embeddings.
+	return col, nil
+}
 
-	fmt.Println("\nInserting Documents")
-
+func insertDocuments(ctx context.Context, col *mongo.Collection) error {
 	d1 := document{
 		ID:        1,
 		Text:      "this is text 1",
@@ -138,55 +159,10 @@ func run() error {
 
 	fmt.Printf("%v\n", res.InsertedIDs)
 
-	// We need to give Mongo a little time to index the documents.
-	time.Sleep(time.Second)
-
-	// -------------------------------------------------------------------------
-	// Perform a vector search.
-
-	fmt.Print("\n---- VECTOR SEARCH ----\n\n")
-
-	results, err := vectorSearch(ctx, col, []float64{1.2, 2.2, 3.2, 4.2}, 10)
-	if err != nil {
-		return fmt.Errorf("storeDocuments: %w", err)
-	}
-
-	fmt.Printf("%#v\n", results)
-
 	return nil
 }
 
 func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, limit int) ([]searchResult, error) {
-
-	// -------------------------------------------------------------------------
-	// Example MongoDB query
-
-	/*
-		db.book.aggregate([
-			{
-				"$vectorSearch": {
-					"index": "vector_index",
-					"exact": true,
-					"path": "embedding",
-					"queryVector": [1.2, 2.2, 3.2, 4.2],
-					"limit": 10
-				}
-			},
-			{
-				"$project": {
-					"text": 1,
-					"embedding": 1,
-					"score": {
-						"$meta": "vectorSearchScore"
-					}
-				}
-			}
-		])
-	*/
-
-	// -------------------------------------------------------------------------
-	// We want to find the nearest neighbors from the specified vector.
-
 	pipeline := mongo.Pipeline{
 		{{
 			Key: "$vectorSearch",
