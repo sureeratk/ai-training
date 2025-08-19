@@ -143,6 +143,9 @@ example11-step2:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example11/step2/*.go
 
+example12-step1:
+	go run cmd/examples/example12/step1/main.go
+
 talk:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/talk/main.go
