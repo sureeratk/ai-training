@@ -178,6 +178,10 @@ example13-step2:
 	go run cmd/examples/example13/step2/*.go
 
 example13-step3:
+	mkdir -p zarf/samples/videos/chunks && \
+	mkdir -p zarf/samples/videos/frames && \
+	rm -rf zarf/samples/videos/chunks/* && \
+	rm -rf zarf/samples/videos/frames/* && \
 	go run ./cmd/examples/example13/step3/main.go
 
 # ==============================================================================
@@ -205,6 +209,8 @@ embedding-up:
 # Ollama tooling
 
 ollama-up:
+	export OLLAMA_KV_CACHE_TYPE=fp8 && \
+	export OLLAMA_FLASH_ATTENTION=true && \
 	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
 	export OLLAMA_MAX_LOADED_MODELS=$(OLLAMA_MAX_LOADED_MODELS) && \
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \

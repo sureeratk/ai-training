@@ -44,13 +44,13 @@ type frame struct {
 const (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
+	modelChat  = "mistral-small3.2:latest"
 	modelEmbed = "nomic-embed-vision-v1.5"
 
 	dimensions          = 768
 	similarityThreshold = 0.80
 	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "zarf/samples/videos/test_rag_video.mp4"
+	sourceFileName      = "zarf/samples/videos/training.mp4"
 )
 
 func main() {
@@ -77,7 +77,10 @@ func run() error {
 
 	totalFramesTime := 0.0
 
-	err := fs.WalkDir(os.DirFS(sourceDir), ".", func(path string, d fs.DirEntry, err error) error {
+	chunksDir := filepath.Join(sourceDir, "chunks")
+	fmt.Printf("\nProcessing video chunks in directory: %s\n", chunksDir)
+
+	err := fs.WalkDir(os.DirFS(chunksDir), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -90,7 +93,7 @@ func run() error {
 			return nil
 		}
 
-		duration, err := getVideoDuration(filepath.Join(sourceDir, path))
+		duration, err := getVideoDuration(filepath.Join(sourceDir, "chunks", path))
 		if err != nil {
 			return fmt.Errorf("get video duration: %w", err)
 		}
@@ -139,6 +142,8 @@ const extractCodePrompt = `
 			"code": "<source code>"
 		}
 
+		Replace the "<source code>" with the actual code.
+
 		If there is no code in the image, output:
 		{
 			"error": "NO CODE FOUND"
@@ -152,7 +157,7 @@ const extractCodePrompt = `
 `
 
 func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, sourceDir string, sourceFileName string, totalFramesTime float64, duration float64) error {
-	fullPath := filepath.Join(sourceDir, sourceFileName)
+	fullPath := filepath.Join(sourceDir, "chunks", sourceFileName)
 
 	fmt.Printf("\nRemoving the frames from the previous chunk: %s\n", filepath.Join(sourceDir, "frames"))
 
@@ -339,6 +344,9 @@ func splitVideoIntoChunks(source string) error {
 // -------------------------------------------------------------------------
 
 func extractKeyFramesFromVideo(source string) error {
+	fmt.Printf("Extracting Video %s keyframes...\n", source)
+	defer fmt.Println("\nDONE Extracting Video keyframes")
+
 	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", source)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
