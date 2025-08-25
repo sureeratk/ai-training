@@ -12,7 +12,7 @@ Title:   Managing Partner
 Email:   bill@ardanlabs.com
 Twitter: goinggodotnet
 
-Name:    Florin Pàțan
+Name:    Florin Pățan
 Company: Ardan Labs
 Title:   Senior Engineer
 Email:   florin.patan@ardanlabs.com
