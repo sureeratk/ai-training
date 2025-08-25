@@ -1,6 +1,5 @@
-// This example builds on example13-step1 and shows you how to
-// process a full length video into chunks, then extract
-// all the information for each chunk.
+// This example builds on example13-step1 and adds the extraction of code from
+// the keyframes extracted in example13-step1.
 //
 // # Running the example:
 //
@@ -8,8 +7,8 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up  // This starts the Ollama service.
-//	$ make compose-up // This starts the Mongo service.
+//	$ make ollama-up    // This starts the Ollama service.
+//	$ make embedding-up // This starts the Embedding service.
 
 package main
 
@@ -48,9 +47,10 @@ const (
 	modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
 	modelEmbed = "nomic-embed-vision-v1.5"
 
-	dimensions = 768
-
+	dimensions          = 768
 	similarityThreshold = 0.80
+	sourceDir           = "zarf/samples/videos/"
+	sourceFileName      = "zarf/samples/videos/test_rag_video.mp4"
 )
 
 func main() {
@@ -68,9 +68,6 @@ func run() error {
 	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
 
 	// -------------------------------------------------------------------------
-
-	sourceDir := "zarf/samples/videos/"
-	sourceFileName := "zarf/samples/videos/test_rag_video.mp4"
 
 	if err := splitVideoIntoChunks(sourceFileName); err != nil {
 		return fmt.Errorf("splitting video into chunks: %w", err)
@@ -266,7 +263,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 	fmt.Println("\nExtracting frame descriptions:")
 
-	for _, f := range uniqueFrames {
+	for i, f := range uniqueFrames {
 		fmt.Printf("Extracting description for image: %s\n", f.fileName)
 
 		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(f.mimeType, f.image))
@@ -292,11 +289,13 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 			continue
 		}
 
-		f.description = descr.Text
-		f.classification = descr.Classification
-		// -------------------------------------------------------------------------
+		uniqueFrames[i].description = descr.Text
+		uniqueFrames[i].classification = descr.Classification
 
 		// -------------------------------------------------------------------------
+
+		// NOW WE WILL EXTRACT CODE SAMPLES OUT OF THE KEYFRAMES TO ADD TO THE
+		// CONTEXT FOR THE EMBEDDING.
 
 		if descr.Classification == "source code" {
 			fmt.Println("  - Source code classification detected, extracting code...")
@@ -305,7 +304,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 				return fmt.Errorf("chat completions: %w", err)
 			}
 
-			f.code = code
+			uniqueFrames[i].code = code
 			fmt.Printf("LLM RESPONSE: %s\n", code)
 		}
 	}
@@ -340,8 +339,6 @@ func splitVideoIntoChunks(source string) error {
 // -------------------------------------------------------------------------
 
 func extractKeyFramesFromVideo(source string) error {
-	_, _ = getVideoDuration(source)
-
 	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", source)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()

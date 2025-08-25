@@ -1,6 +1,6 @@
-// This example builds on example12 and shows you how to
-// process a full length video into chunks, then extract
-// all the information for each chunk.
+// This example builds on everything we've learned to this point. It shows you
+// how to process a full length video into chunks, then extract all the
+// information for each chunk.
 //
 // # Running the example:
 //
@@ -8,8 +8,8 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up  // This starts the Ollama service.
-//	$ make compose-up // This starts the Mongo service.
+//	$ make ollama-up    // This starts the Ollama service.
+//	$ make embedding-up // This starts the Embedding service.
 
 package main
 
@@ -42,21 +42,15 @@ type frame struct {
 }
 
 const (
-	urlChat  = "http://localhost:11434/v1/chat/completions"
-	urlEmbed = "http://localhost:11439/v1/embeddings"
-	// modelChat  = "qwen2.5vl:latest" // ~40 seconds / image
-	// modelChat = "qwen2.5vl:3b" // ~25 seconds / image
-	// modelChat = "granite3.2-vision" // ~20 seconds / image
-	// modelChat  = "gemma3:4b" // ~14 seconds / image
-	// modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q8_0" // ~20 seconds / image
-	modelChat = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M" // ~12 seconds / image
-	// modelChat  = "hf.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF:Q8_0" // ~20 seconds / image
-	// modelChat  = "hf.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF:Q4_K_M" // ~14 seconds / image
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
 	modelEmbed = "nomic-embed-vision-v1.5"
 
-	dimensions = 768
-
+	dimensions          = 768
 	similarityThreshold = 0.80
+	sourceDir           = "zarf/samples/videos/"
+	sourceFileName      = "zarf/samples/videos/test_rag_video.mp4"
 )
 
 func main() {
@@ -74,9 +68,6 @@ func run() error {
 	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
 
 	// -------------------------------------------------------------------------
-
-	sourceDir := "zarf/samples/videos/"
-	sourceFileName := "zarf/samples/videos/test_rag_video.mp4"
 
 	if err := splitVideoIntoChunks(sourceFileName); err != nil {
 		return fmt.Errorf("splitting video into chunks: %w", err)
@@ -182,7 +173,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 		fmt.Printf("\nProcessing image: %s\n", fileName)
 
-		// -------------------------------------------------------------------------
+		// ---------------------------------------------------------------------
 
 		image, mimeType, err := readImage(fileName)
 		if err != nil {
@@ -193,7 +184,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 		f.image = make([]byte, len(image))
 		copy(f.image, image)
 
-		// -------------------------------------------------------------------------
+		// ---------------------------------------------------------------------
 
 		fmt.Println("\nGenerating embeddings for the image description:")
 
@@ -211,7 +202,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 		f.embedding = make([]float64, dimensions)
 		copy(f.embedding, embedding)
 
-		// -------------------------------------------------------------------------
+		// ---------------------------------------------------------------------
 
 		frames = append(frames, f)
 	}
@@ -254,7 +245,7 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 	fmt.Println("\nExtracting frame descriptions:")
 
-	for _, f := range uniqueFrames {
+	for i, f := range uniqueFrames {
 		fmt.Printf("Extracting description for image: %s\n", f.fileName)
 
 		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(f.mimeType, f.image))
@@ -280,8 +271,8 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 			continue
 		}
 
-		f.description = descr.Text
-		f.classification = descr.Classification
+		uniqueFrames[i].description = descr.Text
+		uniqueFrames[i].classification = descr.Classification
 	}
 
 	// -------------------------------------------------------------------------
@@ -314,8 +305,6 @@ func splitVideoIntoChunks(source string) error {
 // -------------------------------------------------------------------------
 
 func extractKeyFramesFromVideo(source string) error {
-	_, _ = getVideoDuration(source)
-
 	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", source)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
@@ -364,9 +353,11 @@ func getFilesFromDirectory(directoryPath string) ([]string, error) {
 		if err != nil {
 			return err
 		}
+
 		if !info.IsDir() && (filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
 			files = append(files, path)
 		}
+
 		return nil
 	})
 	if err != nil {

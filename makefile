@@ -198,7 +198,7 @@ compose-logs:
 # ==============================================================================
 # Embedding tooling
 
-embedding-server:
+embedding-up:
 	uv run cmd/embedding/embedding.py
 
 # ==============================================================================
